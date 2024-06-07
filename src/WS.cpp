@@ -147,7 +147,7 @@ static const char *const image_keys[] = {
     "core_wb_mode",
     "wb_rgain",
     "wb_bgain"};
-
+#if defined(WITH_AUDIO)
 /* AUDIO */
 enum
 {
@@ -176,7 +176,7 @@ static const char *const audio_keys[] = {
     "input_noise_suppression",
     "input_high_pass_filter",
     "output_high_pass_filter"};
-
+#endif
 /* STREAM0 */
 enum
 {
@@ -910,6 +910,7 @@ signed char WS::image_callback(struct lejp_ctx *ctx, char reason)
     return 0;
 }
 
+#if defined(WITH_AUDIO)
 signed char WS::audio_callback(struct lejp_ctx *ctx, char reason)
 {
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
@@ -1128,6 +1129,7 @@ signed char WS::audio_callback(struct lejp_ctx *ctx, char reason)
 
     return 0;
 }
+#endif
 
 signed char WS::stream0_callback(struct lejp_ctx *ctx, char reason)
 {
@@ -1754,10 +1756,12 @@ signed char WS::root_callback(struct lejp_ctx *ctx, char reason)
             lejp_parser_push(ctx, u_ctx,
                              image_keys, LWS_ARRAY_SIZE(image_keys), image_callback);
             break;
+#if defined(WITH_AUDIO)            
         case PNT_AUDIO:
             lejp_parser_push(ctx, u_ctx,
                              audio_keys, LWS_ARRAY_SIZE(audio_keys), audio_callback);
             break;
+#endif
         case PNT_STREAM0:
             lejp_parser_push(ctx, &u_ctx,
                              stream0_keys, LWS_ARRAY_SIZE(stream0_keys), stream0_callback);

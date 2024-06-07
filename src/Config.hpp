@@ -104,6 +104,7 @@ class CFG {
             int wb_bgain;
 
         };
+#if defined(WITH_AUDIO)        
         struct _audio {
             bool input_enabled;
             int input_vol;
@@ -117,6 +118,7 @@ class CFG {
             bool input_high_pass_filter;
             bool output_high_pass_filter;
         };
+#endif        
         struct _stream0 {
 			int gop;
 			int max_gop;
@@ -215,7 +217,9 @@ class CFG {
 		_rtsp rtsp;
 		_sensor sensor;
         _image image;
+#if defined(WITH_AUDIO)        
         _audio audio;
+#endif        
 		_stream0 stream0;
 		_stream1 stream1;
 		_osd osd;
@@ -358,12 +362,13 @@ class CFG {
             {"rtsp.auth_required",      rtsp.auth_required, true, [](const bool &v) { return true; }, ""},
             {"image.vflip", 	        image.vflip, false, [](const bool &v) { return true; }, ""},
             {"image.hflip", 	        image.hflip, false, [](const bool &v) { return true; }, ""},
+#if defined(WITH_AUDIO)            
             {"audio.input_enabled",	    audio.input_enabled, false, [](const bool &v) { return true; }, ""},
             {"audio.output_enabled",	audio.output_enabled, false, [](const bool &v) { return true; }, ""},
 			{"audio.input_echo_cancellation", audio.input_echo_cancellation, false, [](const bool &v) { return true; }, ""},
             {"audio.output_high_pass_filter", audio.input_high_pass_filter, false, [](const bool &v) { return true; }, ""},
             {"audio.output_high_pass_filter", audio.output_high_pass_filter, false, [](const bool &v) { return true; }, +""},
-
+#endif
             {"stream0.scale_enabled",   stream0.scale_enabled, false, [](const bool &v) { return true; }, ""},
 			{"stream1.jpeg_enabled",    stream1.jpeg_enabled, true, [](const bool &v) { return true; }, ""},
 			{"osd.enabled",             osd.enabled, true, [](const bool &v) { return true; }, ""},
@@ -423,12 +428,14 @@ class CFG {
             {"image.core_wb_mode",      image.core_wb_mode, 0, [](const int &v) { return v >= 0 && v <= 9; },  ""},
             {"image.wb_rgain",          image.wb_rgain, 0, [](const int &v) { return v >= 0 && v <= 34464; },""},
             {"image.wb_bgain",          image.wb_bgain, 0, [](const int &v) { return v >= 0 && v <= 34464; },""},
+#if defined(WITH_AUDIO)            
             {"audio.input_vol",	        audio.input_vol, 0, [](const int &v) { return v >= -30 && v <= 120; },""},
 			{"audio.input_gain", 		audio.input_gain, 0, [](const int &v) { return v >= 0 && v <= 31; }, ""},
 			{"audio.input_alc_gain",   	audio.input_alc_gain, 0, [](const int &v) { return v >= 0 && v <= 7; }, ""},
 			{"audio.output_vol", 		audio.output_vol, 0, [](const int &v) { return v >= -30 && v <= 120; },  ""},
 			{"audio.output_gain", 		audio.output_gain, 0, [](const int &v) { return v >= 0 && v <= 31; },  ""},
 			{"audio.input_noise_suppression", audio.input_noise_suppression, 0, [](const int &v) { return v >= 0 && v <= 3; }, ""},
+#endif            
 			{"stream0.gop", 			stream0.gop, 0, [](const int &v) { return v > 0; }, ""},
 			{"stream0.max_gop", 		stream0.max_gop, 60, [](const int &v) { return v > 0; }, ""},
 			{"stream0.fps", 			stream0.fps, 24, [](const int &v) { return v > 0 && v <= 60; }, ""},
