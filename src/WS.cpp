@@ -14,6 +14,8 @@
 #include "globals.hpp"
 #include <filesystem>
 #include <sys/inotify.h>
+#include "sys/stat.h"
+#include "sys/mman.h"
 
 #include <iomanip>
 
@@ -2038,6 +2040,54 @@ send_snapshot(lws_sorted_usec_list_t *sul)
     lws_callback_on_writable(u_ctx->wsi);
 }
 
+void send_jpeg(struct lws *wsi)
+{
+    LOG_DDEBUG("send_jpeg #################################");
+    const char *finalPath = global_jpeg[0]->stream->jpeg_path;
+    int rc, fd = open(finalPath, O_RDONLY);
+    if (fd == -1) {
+        LOG_ERROR("Failed to open " << global_jpeg[0]->stream->jpeg_path);
+        return;
+    }
+    struct stat st;
+    fstat(fd, &st);
+    size_t jpeg_size = st.st_size;
+    volatile char touchme;
+    unsigned char *filebase;
+    filebase = (unsigned char *)mmap(NULL, jpeg_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    size_t pgsize = getpagesize();
+    unsigned char *base;
+    LOG_INFO("filebase is " << (int) filebase << " pgsize is " << pgsize << " jpeg_size " << jpeg_size);
+    unsigned char *target = (unsigned char*)(filebase) - pgsize;
+    base = (unsigned char *)mmap(target, pgsize,
+        PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    if (base != target) {
+        LOG_ERROR("Failed to prepare fixed mapping, base is " << (int)base);
+        perror("mmap");
+        goto out;
+    }
+    LOG_DDEBUG("send_jpeg pre_touch");
+    touchme = *filebase;    // work-around for kernel bug in old Linux; touch
+                            // page before passing it to kernel (via lws_write).
+    LOG_DDEBUG("send_jpeg pre_write");
+    rc = lws_write(wsi, (unsigned char*)(filebase + LWS_PRE), jpeg_size - LWS_PRE, LWS_WRITE_BINARY);
+    LOG_DDEBUG("send_jpeg post_write");
+    if (rc == -1) {
+        perror("lws_write");
+    }
+
+    rc = munmap((void *)filebase, jpeg_size);
+    if (rc == -1) {
+        LOG_ERROR("munmap filebase failed");
+    }
+    rc = munmap(base, pgsize);
+    if (rc == -1) {
+        LOG_ERROR("munmap base failed");
+    }
+out:
+    close(fd);
+}
+
 int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
     struct lejp_ctx ctx;
@@ -2228,11 +2278,16 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
             std::unique_lock lck(mutex_main);
             global_jpeg[0]->subscribers--;
             lck.unlock();
+
+            send_jpeg(wsi);
+            
+            /*
             std::vector<unsigned char> jpeg_buf;
             if (get_snapshot(jpeg_buf))
             {
                 lws_write(wsi, jpeg_buf.data() + LWS_PRE, jpeg_buf.size() - LWS_PRE, LWS_WRITE_BINARY);
             }
+            */
             u_ctx->flag &= ~(PNT_FLAG_WS_SEND_PREVIEW | PNT_FLAG_WS_PREVIEW_PENDING);
         }
         break;
