@@ -2,6 +2,9 @@
 #define OSD_hpp
 
 //#include <map>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include "Config.hpp"
 #include <imp/imp_osd.h>
@@ -11,11 +14,55 @@
 #include <arpa/inet.h>
 #include <sys/sysinfo.h>
 #include "schrift.h"
+#include <filesystem>
+#include "Config.hpp"
+#include "Logger.hpp"
+
+namespace fs = std::filesystem;
 
 #if defined(PLATFORM_T31)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
 #define IMPEncoderCHNStat IMPEncoderChnStat
 #endif
+
+struct OSDItemV2
+{
+    IMPRgnHandle imp_rgn;
+    uint8_t *data;
+    uint16_t width;
+    uint16_t height;
+    std::string text;
+    fs::file_time_type file_time;
+    IMPOSDRgnAttrData *rgnAttrData;
+    OsdConfigItem *osdConfigItem;
+
+    OSDItemV2(OsdConfigItem *osdCi, int osdGrp) 
+        : data(nullptr), width(0), height(0), text(""), rgnAttrData(nullptr), osdConfigItem(osdCi) {
+
+        int ret;
+
+        //osdConfigItem = new OsdConfigItem(*osdCi);
+
+        imp_rgn = IMP_OSD_CreateRgn(nullptr);
+        
+        ret = IMP_OSD_RegisterRgn(imp_rgn, osdGrp, nullptr);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_RegisterRgn(" << (int)imp_rgn << ", " << osdGrp << ", nullptr) == " << ret);
+
+        IMPOSDRgnAttr rgnAttr;
+        memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
+        rgnAttr.type = OSD_REG_PIC;
+        rgnAttr.fmt = PIX_FMT_BGRA;
+        IMP_OSD_SetRgnAttr(imp_rgn, &rgnAttr);
+
+        IMPOSDGrpRgnAttr grpRgnAttr;
+        memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
+        grpRgnAttr.show = 1;
+        grpRgnAttr.layer = 1;
+        grpRgnAttr.gAlphaEn = 1;
+        grpRgnAttr.fgAlhpa = osdConfigItem->transparency; /*transparency*/
+        IMP_OSD_SetGrpRgnAttr(imp_rgn, osdGrp, &grpRgnAttr);        
+    };
+};
 
 struct OSDItem
 {
@@ -68,6 +115,9 @@ private:
     void drawOutline(uint8_t* image, const Glyph& g, int x, int y, int outlineSize, int WIDTH, int HEIGHT);
     int calculateTextSize(const char* text, uint16_t& width, uint16_t& height, int outlineSize);
     int drawText(uint8_t* image, const char* text, int WIDTH, int HEIGHT, int outlineSize);
+    bool OSDTextPlaceholders(OSDItemV2 *osdItem);
+    bool OSDTextFromFile(OSDItemV2 *osdItem);
+
     uint8_t BGRA_STROKE[4];
     uint8_t BGRA_TEXT[4];
 
@@ -80,7 +130,10 @@ private:
     OSDItem osdUptm{};
     OSDItem osdLogo{};
 
+    std::vector<OSDItemV2 *> osdItems;
+
     void set_text(OSDItem *osdItem, IMPOSDRgnAttr *rgnAttr, const char *text, int posX, int posY, int angle);
+    void set_text2(OSDItemV2 *osdItem, IMPOSDRgnAttr *rgnAttr, const char *text, int posX, int posY, int angle);
     std::string getConfigPath(const char *itemName);
 
     IMPEncoderCHNAttr channelAttributes;
@@ -104,6 +157,7 @@ private:
     char fps[4];
     char bps[8];
     uint8_t flag{0};
+    uint8_t osd_items_to_update;
 };
 
 #endif

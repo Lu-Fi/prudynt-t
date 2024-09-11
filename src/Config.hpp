@@ -13,7 +13,7 @@
 #define ENABLE_LOG_DEBUG
 
 //Some more debug output not usefull for users (Developer Debug)
-//#define DDEBUG
+#define DDEBUG
 
 //enable audio support
 #define AUDIO_SUPPORT
@@ -27,7 +27,7 @@
 #define OSD_AUTO_VALUE 16384
 #define IVS_AUTO_VALUE 16384
 
-#define THREAD_SLEEP 100000
+#define THREAD_SLEEP 25000
 #define GET_STREAM_BLOCKING false
 
 #if defined(PLATFORM_T31)
@@ -59,15 +59,18 @@
     #define DEFAULT_TEMPER_VALIDATE validateInt50_150
 #endif
 
+#define OSD_STREAMS 2
+
 struct OsdConfigItem{
-    int *streams;
+    bool streams[OSD_STREAMS];
     int posX;
     int posY;
     int width;
     int height;
+    int transparency;
+    int rotation;
     const char *text;
     const char *file;
-    int impRgnHandle;
 };
 
 struct roi{

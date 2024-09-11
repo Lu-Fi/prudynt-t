@@ -727,6 +727,7 @@ CFG::CFG()
     */
     if (root.exists("osd"))
     {
+        osdConfigItems.clear();
         Setting &osd = root.lookup("osd");
         if (osd.exists("items"))
         {
@@ -740,17 +741,18 @@ CFG::CFG()
                     if (item.exists("streams"))
                     {
                         bool isValid = true;
-                        OsdConfigItem osdConfigItem{0};
+                        bool isFile = true;
+                        OsdConfigItem osdConfigItem{{false, false},0,0,0,0,0,0,nullptr, nullptr};
                         const char* delimiter = ":";
 
                         const Setting& streams = item["streams"];
                         if (streams.getType() == Setting::TypeArray) {
 
-                            osdConfigItem.streams = new int[streams.getLength()];
                             for (int j = 0; j < streams.getLength(); ++j) {
                                 const Setting& stream = streams[j];
-                                if(stream.getType() == Setting::TypeInt) {
-                                    osdConfigItem.streams[j] = streams[j];
+                                if(stream.getType() == Setting::TypeInt && (int)streams[j] < OSD_STREAMS) {
+
+                                    osdConfigItem.streams[streams[j]] = true;
                                 }
                                 else 
                                 {
@@ -758,13 +760,22 @@ CFG::CFG()
                                 }
                             }
 
-                            if (!(item.lookupValue("posX", osdConfigItem.posX)
-                                && item.lookupValue("posY", osdConfigItem.posY)
-                                && item.lookupValue("file", osdConfigItem.file)) && isValid) {
+                            if (!item.lookupValue("posX", osdConfigItem.posX)
+                                || !item.lookupValue("posY", osdConfigItem.posY)) {
                                 isValid = false;
                             }
 
-                            if (isValid && strchr(osdConfigItem.file, *delimiter)) {
+                            if(!item.lookupValue("file", osdConfigItem.file))
+                                if(!item.lookupValue("text", osdConfigItem.text))                               
+                                    isValid = false;
+
+                            if(!item.lookupValue("transparency", osdConfigItem.transparency))
+                                osdConfigItem.transparency = 255;
+
+                            if(!item.lookupValue("rotation", osdConfigItem.rotation))
+                                osdConfigItem.rotation = 0;
+
+                            if (osdConfigItem.file && isValid && strchr(osdConfigItem.file, *delimiter)) {
                                 char* token;
                                 char* file = new char[strlen(osdConfigItem.file) + 1];
                                 strcpy(file, osdConfigItem.file);
