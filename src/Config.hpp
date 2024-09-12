@@ -71,6 +71,15 @@ struct OsdConfigItem{
     int rotation;
     const char *text;
     const char *file;
+
+    OsdConfigItem() 
+        : posX(0), posY(0), width(0), height(0), 
+          transparency(255), rotation(0), text(nullptr), file(nullptr) 
+    {
+        for (int i = 0; i < OSD_STREAMS; ++i) {
+            streams[i] = false;
+        }
+    }
 };
 
 struct roi{
@@ -280,6 +289,7 @@ class CFG {
         std::string filePath{};
 
 		CFG();
+        void load();
         static CFG *createNew();
         bool readConfig();
         bool updateConfig();
@@ -298,7 +308,9 @@ class CFG {
         _websocket websocket{};
 
         // new osdItems 
-        std::vector<OsdConfigItem> osdConfigItems{};
+        // std::vector<OsdConfigItem> osdConfigItems{};
+        int numOsdConfigItems{0};
+        OsdConfigItem *osdConfigItems;
 
     template <typename T>
     T get(const std::string &name) {

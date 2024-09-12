@@ -1,4 +1,3 @@
-
 #include <cmath>
 #include "OSD.hpp"
 
@@ -13,9 +12,7 @@
 #define picHeight uHeight
 #endif
 
-#include <unordered_map>
 #include <vector>
-#include <fstream>
 
 #include "schrift.h"
 
@@ -208,48 +205,67 @@ int OSD::libschrift_init()
 {
     LOG_DEBUG("OSD::libschrift_init()");
 
-    std::ifstream fontFile(osd.font_path, std::ios::binary | std::ios::ate);
-    if (!fontFile.is_open())
+    FILE *fontFile = fopen(osd.font_path, "rb");
+    if (!fontFile)
     {
         LOG_DEBUG("Unable to open font file.");
         return -1;
     }
 
-    BGRA_TEXT[2] = (osd.font_color >> 16) & 0xFF;
-    BGRA_TEXT[1] = (osd.font_color >> 8) & 0xFF;
-    BGRA_TEXT[0] = (osd.font_color >> 0) & 0xFF;
-    BGRA_TEXT[3] = 0;
+    BGRA_TEXT[2] = (osd.font_color >> 16) & 0xFF; // Blue
+    BGRA_TEXT[1] = (osd.font_color >> 8) & 0xFF;  // Green
+    BGRA_TEXT[0] = (osd.font_color >> 0) & 0xFF;  // Red
+    BGRA_TEXT[3] = 0;                             // Alpha
 
-    BGRA_STROKE[2] = (osd.font_stroke_color >> 16) & 0xFF;
-    BGRA_STROKE[1] = (osd.font_stroke_color >> 8) & 0xFF;
-    BGRA_STROKE[0] = (osd.font_stroke_color >> 0) & 0xFF;
-    BGRA_STROKE[3] = 255;
+    BGRA_STROKE[2] = (osd.font_stroke_color >> 16) & 0xFF; // Blue
+    BGRA_STROKE[1] = (osd.font_stroke_color >> 8) & 0xFF;  // Green
+    BGRA_STROKE[0] = (osd.font_stroke_color >> 0) & 0xFF;  // Red
+    BGRA_STROKE[3] = 255;                                  // Alpha
 
-    size_t fileSize = fontFile.tellg();
-    std::vector<uint8_t> fontData;
-    fontFile.seekg(0, std::ios::beg);
-    fontData.resize(fileSize);
-    fontFile.read(reinterpret_cast<char *>(fontData.data()), fileSize);
-    fontFile.close();
+    fseek(fontFile, 0, SEEK_END);
+    long fileSize = ftell(fontFile);
+    fseek(fontFile, 0, SEEK_SET);
+
+    uint8_t *fontData = (uint8_t *)malloc(fileSize);
+    if (!fontData)
+    {
+        fclose(fontFile);
+        LOG_DEBUG("Memory allocation failed for font data.");
+        return -1;
+    }
+
+    size_t bytesRead = fread(fontData, 1, fileSize, fontFile);
+    fclose(fontFile);
+    LOG_DEBUG(bytesRead);
+    
+    if (bytesRead != (size_t)fileSize)
+    {
+        free(fontData);
+        LOG_DEBUG("Error reading font file.");
+        return -1;
+    }
 
     sft = new SFT();
     sft->flags = SFT_DOWNWARD_Y;
     sft->xScale = osd.font_size * osd.font_xscale / 100;
     sft->yScale = osd.font_size * osd.font_yscale / 100;
     sft->yOffset = osd.font_yoffset;
-    sft->font = sft_loadmem(fontData.data(), fontData.size());
+
+    sft->font = sft_loadmem(fontData, fileSize);
+
     if (!sft->font)
     {
+        delete sft; 
+        free(fontData);
         LOG_DEBUG("Unable to load font data.");
         return -1;
     }
 
     LOG_DDEBUG("prerender OSD glyph's, xScale:" << sft->xScale << " yScale:" << sft->yScale);
-    // std::cout << std::hex << sft->font << std::endl;
-
     renderGlyph("01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!§$%&/()=?,.-_:;#'+*~}{} ");
 
-    fontData.clear();
+    free(fontData);
+    sft->~SFT();
 
     LOG_DDEBUG("OSD::libschrift_init() done.");
     return 0;
@@ -396,11 +412,6 @@ int getIp(char *addressBuffer)
     return 0;
 }
 
-std::string OSD::getConfigPath(const char *itemName)
-{
-    return std::string(parent) + ".osd." + itemName;
-}
-
 int autoFontSize(int pWidth)
 {
     double m = 0.0046875;
@@ -408,14 +419,29 @@ int autoFontSize(int pWidth)
     return static_cast<int>(m * pWidth + b + 0.5);
 }
 
-void replace(std::string &str, const std::string &oldToken, const std::string &newToken)
+void replacestr(char *line, const char *search, const char *replace)
 {
-    size_t pos = 0;
-    while ((pos = str.find(oldToken, pos)) != std::string::npos)
-    {
-        str.replace(pos, oldToken.length(), newToken);
-        pos += newToken.length();
-    }
+   int count;
+   char *sp;
+
+   if ((sp = strstr(line, search)) == NULL) {
+      return;
+   }
+   int sLen = strlen(search);
+   int rLen = strlen(replace);
+   if (sLen > rLen) {
+      char *src = sp + sLen;
+      char *dst = sp + rLen;
+      while((*dst = *src) != '\0') { dst++; src++; }
+   } else if (sLen < rLen) {
+      int tLen = strlen(sp) - sLen;
+      char *stop = sp + rLen;
+      char *src = sp + sLen + tLen;
+      char *dst = sp + rLen + tLen;
+      while(dst >= stop) { *dst = *src; dst--; src--; }
+   }
+   memcpy(sp, replace, rLen);
+   replacestr(sp + rLen, search, replace);
 }
 
 void OSD::rotateBGRAImage(uint8_t *&inputImage, uint16_t &width, uint16_t &height, int angle, bool del = true)
@@ -555,28 +581,41 @@ unsigned char *loadBGRAImage(const char *filepath, size_t &length)
     return data;
 }
 
-bool OSD::OSDTextFromFile(OSDItemV2 *osdItem)
+bool OSD::OSDTextFromFile(OSDItemV2 *osdItem) 
 {
-    auto file_time = fs::last_write_time(osdItem->osdConfigItem->file);
-    if (file_time != osdItem->file_time)
-    {
-        osdItem->file_time = file_time;
-        std::ifstream file(osdItem->osdConfigItem->file);
-        std::string new_text;
+    struct stat fileStat;
+    LOG_DEBUG(osdItem->osdConfigItem->file);
 
-        if (file.is_open())
+    if (stat(osdItem->osdConfigItem->file, &fileStat) != 0) 
+    {
+        LOG_ERROR("unable to get stat: " << osdItem->osdConfigItem->file);
+        return false;
+    }
+
+    if (fileStat.st_mtime != osdItem->file_time) 
+    {
+        osdItem->file_time = fileStat.st_mtime;
+
+        char new_text[1024] = "-empty file-";
+        memset(new_text, 0, sizeof(new_text));
+
+        FILE *file = fopen(osdItem->osdConfigItem->file, "r");
+        if (file != NULL) 
         {
-            std::getline(file, new_text);
-            file.close();
+            if (fgets(new_text, sizeof(new_text), file) == NULL) 
+            {
+                strncpy(new_text, "-empty file-", 12);
+            }
+            fclose(file);
         }
         else
         {
-            new_text = "-file error-";
+            strncpy(new_text, "-file error-", 12);
         }
 
-        if (new_text != osdItem->text)
+        if (strcmp(new_text, osdItem->text) != 0)
         {
-            osdItem->text = new_text;
+            osdItem->text = strdup(new_text);
             return true;
         }
     }
@@ -584,34 +623,37 @@ bool OSD::OSDTextFromFile(OSDItemV2 *osdItem)
     return false;
 }
 
+
 bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
 {
-    std::string new_text = osdItem->osdConfigItem->text;
+    char new_text[1024];
+    strncpy(new_text, osdItem->osdConfigItem->text, sizeof(new_text) - 1);
+    new_text[sizeof(new_text) - 1] = '\0';
 
     if (strstr(osdItem->osdConfigItem->text, "%hostname") != nullptr)
     {
         gethostname(hostname, 64);
-        replace(new_text, "%hostname", hostname);
+        replacestr(new_text, "%hostname", hostname);
     }
 
     if (strstr(osdItem->osdConfigItem->text, "%ipaddress") != nullptr)
     {
         getIp(ip);
-        replace(new_text, "%ipaddress", ip);
+        replacestr(new_text, "%ipaddress", ip);
     }
 
     if (strstr(osdItem->osdConfigItem->text, "%fps") != nullptr)
     {
         char fps[4];
         snprintf(fps, 4, "%3d", osd.stats.fps);
-        replace(new_text, "%fps", fps);
+        replacestr(new_text, "%fps", fps);
     }
 
     if (strstr(osdItem->osdConfigItem->text, "%bps") != nullptr)
     {
         char bps[8];
         snprintf(bps, 8, "%5d", osd.stats.bps);
-        replace(new_text, "%bps", bps);
+        replacestr(new_text, "%bps", bps);
     }
 
     if (strstr(osdItem->osdConfigItem->text, "%uptime") != nullptr)
@@ -622,18 +664,18 @@ bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
         unsigned long minutes = (currentUptime % 3600) / 60;
         // unsigned long seconds = currentUptime % 60;
         snprintf(uptimeFormatted, sizeof(uptimeFormatted), osd.uptime_format, days, hours, minutes);
-        replace(new_text, "%uptime", uptimeFormatted);
+        replacestr(new_text, "%uptime", uptimeFormatted);
     }
 
     if (strstr(osdItem->osdConfigItem->text, "%datetime") != nullptr)
     {
         strftime(timeFormatted, sizeof(timeFormatted), osd.time_format, ltime);
-        replace(new_text, "%datetime", timeFormatted);
+        replacestr(new_text, "%datetime", timeFormatted);
     }
 
-    if (new_text != osdItem->text)
+    if (strcmp(new_text, osdItem->text) != 0)
     {
-        osdItem->text = new_text;
+        osdItem->text = strdup(new_text);
         return true;
     }
 
@@ -652,7 +694,7 @@ OSD *OSD::createNew(
 void OSD::init()
 {
     int ret = 0;
-    LOG_DEBUG("OSD init for begin");
+    LOG_DEBUG("OSD init encChn: " << encChn);
 
     // initially get time
     current = time(nullptr);
@@ -661,14 +703,12 @@ void OSD::init()
     ret = IMP_OSD_SetPoolSize(cfg->general.osd_pool_size * 1024);
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_SetPoolSize(" << (cfg->general.osd_pool_size * 1024) << ")");
 
-    // cfg = _cfg;
     last_updated_second = -1;
 
     ret = IMP_Encoder_GetChnAttr(osdGrp, &channelAttributes);
     if (ret < 0)
     {
         LOG_DEBUG("IMP_Encoder_GetChnAttr() == " << ret);
-        // return true;
     }
 
     stream_width = channelAttributes.encAttr.picWidth;
@@ -686,7 +726,9 @@ void OSD::init()
     if (osd.font_size == OSD_AUTO_VALUE)
     {
         // use cfg->set to set noSave, so auto values will not written to config
-        cfg->set<int>(getConfigPath("font_size"), fontSize, true);
+        char tmpPath[22];
+        snprintf(tmpPath, sizeof(tmpPath), "stream%d.osd.font_size\0", encChn);
+        cfg->set<int>(tmpPath, fontSize, true);
     }
 
     if (libschrift_init() != 0)
@@ -694,260 +736,105 @@ void OSD::init()
         LOG_DEBUG("libschrift init failed.");
     }
 
-    if (true)
+    //for (OsdConfigItem osdConfigItem : cfg->osdConfigItems)
+    for (int i = 0; i < cfg->numOsdConfigItems; i++)
     {
-        LOG_DEBUG("###################################################");
+        OsdConfigItem *osdConfigItem = &cfg->osdConfigItems[i];
 
-        for (OsdConfigItem osdConfigItem : cfg->osdConfigItems)
+        // check if this osdConfigItem is assigned to this encChn(stream)
+        if (osdConfigItem->streams[encChn])
         {
-            // check if this osdConfigItem is assigned to this encChn(stream)
-            if (osdConfigItem.streams[encChn])
+            OSDItemV2 *osdItem = new OSDItemV2(osdConfigItem, osdGrp);
+
+            LOG_DEBUG("osdConfigItem " << i << " {" << 
+                "'posX':" << osdItem->osdConfigItem->posX << ", " <<
+                "'posY':" << osdItem->osdConfigItem->posY << ", " <<
+                "'height':" << osdItem->osdConfigItem->height << ", " <<
+                "'width':" << osdItem->osdConfigItem->width << ", " <<
+                "'text':'" << (osdItem->osdConfigItem->text ? osdItem->osdConfigItem->text : "") << "', " <<
+                "'file':'" << (osdItem->osdConfigItem->file ? osdItem->osdConfigItem->file : "") << "'}"
+            );
+
+            // OSD Image
+            if (osdItem->osdConfigItem->width && osdItem->osdConfigItem->height)
             {
-                OSDItemV2 *osdItem = new OSDItemV2(&osdConfigItem, osdGrp);
+                LOG_DEBUG("OSDImage");
+                IMPOSDRgnAttr rgnAttr;
+                memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
+                IMP_OSD_GetRgnAttr(osdItem->imp_rgn, &rgnAttr);
 
-                // OSD Image
-                if (osdConfigItem.width && osdConfigItem.height)
+                size_t imageSize;
+                osdItem->data = loadBGRAImage(osdItem->osdConfigItem->file, imageSize);
+
+                // Verify OSD logo size vs dimensions
+                if ((osd.logo_width * osd.logo_height * 4) == imageSize)
                 {
-                    IMPOSDRgnAttr rgnAttr;
-                    memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-                    IMP_OSD_GetRgnAttr(osdItem->imp_rgn, &rgnAttr);
+                    rgnAttr.data.picData.pData = osdItem->data;
 
-                    size_t imageSize;
-                    osdItem->data = loadBGRAImage(osdConfigItem.file, imageSize);
-
-                    // Verify OSD logo size vs dimensions
-                    if ((osd.logo_width * osd.logo_height * 4) == imageSize)
+                    // Logo rotation
+                    uint16_t logo_width = osdItem->osdConfigItem->width;
+                    uint16_t logo_height = osdItem->osdConfigItem->height;
+                    if (osdItem->osdConfigItem->rotation)
                     {
-                        rgnAttr.data.picData.pData = osdItem->data;
-
-                        // Logo rotation
-                        uint16_t logo_width = osdConfigItem.width;
-                        uint16_t logo_height = osdConfigItem.height;
-                        if (osdItem->osdConfigItem->rotation)
-                        {
-                            uint8_t *imageData = static_cast<uint8_t *>(rgnAttr.data.picData.pData);
-                            rotateBGRAImage(imageData, logo_width,
-                                            logo_height, osdItem->osdConfigItem->rotation, false);
-                            rgnAttr.data.picData.pData = imageData;
-                        }
-
-                        set_pos(&rgnAttr, osdConfigItem.posX,
-                                osdConfigItem.posY, logo_width, logo_height, stream_width, stream_height);
+                        uint8_t *imageData = static_cast<uint8_t *>(rgnAttr.data.picData.pData);
+                        rotateBGRAImage(imageData, logo_width,
+                                        logo_height, osdItem->osdConfigItem->rotation, false);
+                        rgnAttr.data.picData.pData = imageData;
                     }
-                    else
-                    {
 
-                        LOG_ERROR("Invalid OSD logo dimensions. Imagesize=" << imageSize << ", " << osdConfigItem.width
-                                                                            << "*" << osdConfigItem.height << "*4=" << (osdConfigItem.width * osdConfigItem.height * 4));
-                    }
-                    IMP_OSD_SetRgnAttr(osdItem->imp_rgn, &rgnAttr);
-                }
-                // OSD Text
-                else if (osdConfigItem.text)
-                {
-                    LOG_DEBUG("OSDTextPlaceholders updated: " << osdItem->osdConfigItem->text << " == " << osdItem->text);
-                    if (OSDTextPlaceholders(osdItem))
-                    {
-                        set_text2(osdItem, nullptr, osdItem->text.c_str(),
-                                  osdConfigItem.posX, osdConfigItem.posY, osdItem->osdConfigItem->rotation);
-                    }
-                }
-                else if (osdConfigItem.file)
-                {
-                    LOG_DEBUG("OSDFile updated: " << osdItem->osdConfigItem->file << " == " << osdItem->text);
-                    if (OSDTextFromFile(osdItem))
-                    {
-                        set_text2(osdItem, nullptr, osdItem->text.c_str(),
-                                  osdConfigItem.posX, osdConfigItem.posY, osdItem->osdConfigItem->rotation);
-                    }
-                }
-
-                if (osdItem->data)
-                {
-                    osdItems.push_back(osdItem);
+                    set_pos(&rgnAttr, osdItem->osdConfigItem->posX,
+                            osdItem->osdConfigItem->posY, logo_width, logo_height, stream_width, stream_height);
                 }
                 else
                 {
-                    LOG_ERROR("invalid osd item");
+
+                    LOG_ERROR("Invalid OSD logo dimensions. Imagesize=" << imageSize << ", " << osdItem->osdConfigItem->width
+                                                                        << "*" << osdItem->osdConfigItem->height << "*4=" << (osdItem->osdConfigItem->width * osdItem->osdConfigItem->height * 4));
+                }
+                IMP_OSD_SetRgnAttr(osdItem->imp_rgn, &rgnAttr);
+            }
+            // OSD Text
+            else if (osdItem->osdConfigItem->file)
+            {
+                LOG_DEBUG("OSDFile");
+                if (OSDTextFromFile(osdItem))
+                {
+                    set_text2(osdItem, nullptr, osdItem->text,
+                                osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
+                }
+            }                
+            // OSD Text
+            else if (osdItem->osdConfigItem->text)
+            {
+                LOG_DEBUG("OSDText");
+                if (OSDTextPlaceholders(osdItem))
+                {
+                    set_text2(osdItem, nullptr, osdItem->text,
+                                osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
                 }
             }
-        }
-    }
 
-    /*
-    if (osd.time_enabled)
-    {
-        // OSD Time
-        if (osd.pos_time_x == OSD_AUTO_VALUE)
-        {
-            cfg->set<int>(getConfigPath("pos_time_x").c_str(), autoOffset, true);
-        }
-        if (osd.pos_time_y == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_time_y").c_str(), autoOffset, true);
-        }
+            LOG_DEBUG("osdItem " << i << " {" << 
+                "'text':" << osdItem->text << ", " <<
+                "'length':" << strlen(osdItem->text) << ", " <<
+                "'imp_rgn':" << osdItem->imp_rgn << "'}"
+            );
 
-        osdTime.data = nullptr;
-        osdTime.imp_rgn = IMP_OSD_CreateRgn(nullptr);
-        IMP_OSD_RegisterRgn(osdTime.imp_rgn, osdGrp, nullptr);
-        osd.regions.time = osdTime.imp_rgn;
-
-        IMPOSDRgnAttr rgnAttr;
-        memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-        rgnAttr.type = OSD_REG_PIC;
-        rgnAttr.fmt = PIX_FMT_BGRA;
-        set_text(&osdTime, &rgnAttr, osd.time_format,
-                 osd.pos_time_x, osd.pos_time_y, osd.time_rotation);
-        IMP_OSD_SetRgnAttr(osdTime.imp_rgn, &rgnAttr);
-
-        IMPOSDGrpRgnAttr grpRgnAttr;
-        memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
-        grpRgnAttr.show = 1;
-        grpRgnAttr.layer = 1;
-        grpRgnAttr.gAlphaEn = 0;
-        grpRgnAttr.fgAlhpa = osd.time_transparency;
-        IMP_OSD_SetGrpRgnAttr(osdTime.imp_rgn, osdGrp, &grpRgnAttr);
-    }
-
-    if (osd.user_text_enabled)
-    {
-        getIp(ip);
-        gethostname(hostname, 64);
-
-        // OSD Usertext
-        if (osd.pos_user_text_x == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_user_text_x").c_str(), 0, true);
-        }
-        if (osd.pos_user_text_y == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_user_text_y").c_str(), autoOffset, true);
-        }
-
-        osdUser.data = nullptr;
-        osdUser.imp_rgn = IMP_OSD_CreateRgn(nullptr);
-        IMP_OSD_RegisterRgn(osdUser.imp_rgn, osdGrp, nullptr);
-        osd.regions.user = osdUser.imp_rgn;
-
-        IMPOSDRgnAttr rgnAttr;
-        memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-        rgnAttr.type = OSD_REG_PIC;
-        rgnAttr.fmt = PIX_FMT_BGRA;
-        set_text(&osdUser, &rgnAttr, osd.user_text_format,
-                 osd.pos_user_text_x, osd.pos_user_text_y, osd.user_text_rotation);
-        IMP_OSD_SetRgnAttr(osdUser.imp_rgn, &rgnAttr);
-
-        IMPOSDGrpRgnAttr grpRgnAttr;
-        memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
-        grpRgnAttr.show = 1;
-        grpRgnAttr.layer = 2;
-        grpRgnAttr.gAlphaEn = 1;
-        grpRgnAttr.fgAlhpa = osd.user_text_transparency;
-        IMP_OSD_SetGrpRgnAttr(osdUser.imp_rgn, osdGrp, &grpRgnAttr);
-    }
-
-    if (osd.uptime_enabled)
-    {
-        // OSD Uptime
-        if (osd.pos_uptime_x == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_uptime_x").c_str(), -autoOffset, true);
-        }
-        if (osd.pos_uptime_y == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_uptime_y").c_str(), autoOffset, true);
-        }
-
-        osdUptm.data = nullptr;
-        osdUptm.imp_rgn = IMP_OSD_CreateRgn(nullptr);
-        IMP_OSD_RegisterRgn(osdUptm.imp_rgn, osdGrp, nullptr);
-        osd.regions.uptime = osdUptm.imp_rgn;
-
-        IMPOSDRgnAttr rgnAttr;
-        memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-        rgnAttr.type = OSD_REG_PIC;
-        rgnAttr.fmt = PIX_FMT_BGRA;
-        set_text(&osdUptm, &rgnAttr, osd.uptime_format,
-                 osd.pos_uptime_x, osd.pos_uptime_y, osd.uptime_rotation);
-        IMP_OSD_SetRgnAttr(osdUptm.imp_rgn, &rgnAttr);
-
-        IMPOSDGrpRgnAttr grpRgnAttr;
-        memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
-        grpRgnAttr.show = 1;
-        grpRgnAttr.layer = 3;
-        grpRgnAttr.gAlphaEn = 1;
-        grpRgnAttr.fgAlhpa = osd.uptime_transparency;
-        IMP_OSD_SetGrpRgnAttr(osdUptm.imp_rgn, osdGrp, &grpRgnAttr);
-    }
-
-    if (osd.logo_enabled)
-    {
-        // OSD Logo
-        if (osd.pos_logo_x == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_logo_x").c_str(), -autoOffset, true);
-        }
-        if (osd.pos_logo_y == OSD_AUTO_VALUE)
-        {
-            // use cfg->set to set noSave, so auto values will not written to config
-            cfg->set<int>(getConfigPath("pos_logo_y").c_str(), -autoOffset, true);
-        }
-
-        size_t imageSize;
-        auto imageData = loadBGRAImage(osd.logo_path, imageSize);
-
-        osdLogo.data = nullptr;
-        osdLogo.imp_rgn = IMP_OSD_CreateRgn(nullptr);
-        IMP_OSD_RegisterRgn(osdLogo.imp_rgn, osdGrp, nullptr);
-        osd.regions.logo = osdLogo.imp_rgn;
-
-        IMPOSDRgnAttr rgnAttr;
-        memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-
-        // Verify OSD logo size vs dimensions
-        if ((osd.logo_width * osd.logo_height * 4) == imageSize)
-        {
-            rgnAttr.type = OSD_REG_PIC;
-            rgnAttr.fmt = PIX_FMT_BGRA;
-            rgnAttr.data.picData.pData = imageData;
-
-            // Logo rotation
-            uint16_t logo_width = osd.logo_width;
-            uint16_t logo_height = osd.logo_height;
-            if (osd.logo_rotation)
+            if (osdItem->data)
             {
-                uint8_t *imageData = static_cast<uint8_t *>(rgnAttr.data.picData.pData);
-                rotateBGRAImage(imageData, logo_width,
-                                logo_height, osd.logo_rotation, false);
-                rgnAttr.data.picData.pData = imageData;
+                osdItems.push_back(osdItem);
             }
+            else
+            {
+                LOG_ERROR("invalid osd item");
 
-            set_pos(&rgnAttr, osd.pos_logo_x,
-                    osd.pos_logo_y, logo_width, logo_height, stream_width, stream_height);
+                ret = IMP_OSD_UnRegisterRgn(osdItem->imp_rgn, osdGrp);
+                LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_UnRegisterRgn(" << osdItem->imp_rgn << ", " << osdGrp << ")");
+
+                IMP_OSD_DestroyRgn(osdItem->imp_rgn);
+            }
         }
-        else
-        {
-
-            LOG_ERROR("Invalid OSD logo dimensions. Imagesize=" << imageSize << ", " << osd.logo_width
-                                                                << "*" << osd.logo_height << "*4=" << (osd.logo_width * osd.logo_height * 4));
-        }
-        IMP_OSD_SetRgnAttr(osdLogo.imp_rgn, &rgnAttr);
-
-        IMPOSDGrpRgnAttr grpRgnAttr;
-        memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
-        grpRgnAttr.show = 1;
-        grpRgnAttr.layer = 4;
-        grpRgnAttr.gAlphaEn = 1;
-        grpRgnAttr.fgAlhpa = osd.logo_transparency;
-        IMP_OSD_SetGrpRgnAttr(osdLogo.imp_rgn, osdGrp, &grpRgnAttr);
     }
-    */
 
     if (osd.start_delay)
         startup_delay = (int)(osd.start_delay * 1000) / THREAD_SLEEP;
@@ -991,45 +878,9 @@ int OSD::exit()
             free(osdItem->data);
         }
     }
-    /*
-    ret = IMP_OSD_ShowRgn(osdTime.imp_rgn, osdGrp, 0);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_ShowRgn(osdTime.imp_rgn, " << osdGrp << ", 0)");
-
-    ret = IMP_OSD_ShowRgn(osdUser.imp_rgn, osdGrp, 0);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_ShowRgn(osdUser.imp_rgn, " << osdGrp << ", 0)");
-
-    ret = IMP_OSD_ShowRgn(osdUptm.imp_rgn, osdGrp, 0);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_ShowRgn(osdUptm.imp_rgn, " << osdGrp << ", 0)");
-
-    ret = IMP_OSD_ShowRgn(osdLogo.imp_rgn, osdGrp, 0);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_ShowRgn(osdLogo.imp_rgn, " << osdGrp << ", 0)");
-
-    ret = IMP_OSD_UnRegisterRgn(osdTime.imp_rgn, osdGrp);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_UnRegisterRgn(osdTime.imp_rgn, " << osdGrp << ")");
-
-    ret = IMP_OSD_UnRegisterRgn(osdUser.imp_rgn, osdGrp);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_UnRegisterRgn(osdUser.imp_rgn, " << osdGrp << ")");
-
-    ret = IMP_OSD_UnRegisterRgn(osdUptm.imp_rgn, osdGrp);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_UnRegisterRgn(osdUptm.imp_rgn, " << osdGrp << ")");
-
-    ret = IMP_OSD_UnRegisterRgn(osdLogo.imp_rgn, osdGrp);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_UnRegisterRgn(osdUptm.imp_rgn, " << osdGrp << ")");
-
-    IMP_OSD_DestroyRgn(osdTime.imp_rgn);
-    IMP_OSD_DestroyRgn(osdUser.imp_rgn);
-    IMP_OSD_DestroyRgn(osdUptm.imp_rgn);
-    IMP_OSD_DestroyRgn(osdLogo.imp_rgn);
-    */
 
     ret = IMP_OSD_DestroyGroup(osdGrp);
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_DestroyGroup(" << osdGrp << ")");
-
-    // cleanup osd image data
-    // free(osdTime.data);
-    // free(osdUser.data);
-    // free(osdUptm.data);
-    // free(osdLogo.data);
 
     sft_freefont(sft->font);
     return 0;
@@ -1037,17 +888,14 @@ int OSD::exit()
 
 void OSD::updateDisplayEverySecond()
 {
-    //gettimeofday(&tm, NULL);
-
     current = time(nullptr);
     ltime = localtime(&current);
 
     // Check if we have moved to a new second
     if (ltime->tm_sec != last_updated_second)
     {
-        flag |= 7;
+
         osd_items_to_update = osdItems.size();
-        // Update the last second tracker
         last_updated_second = ltime->tm_sec;
     }
     else
@@ -1064,7 +912,7 @@ void OSD::updateDisplayEverySecond()
                 if (OSDTextPlaceholders(osdItem))
                 {
                     LOG_DEBUG("OSDTextPlaceholders updated: " << osdItem->osdConfigItem->text << " == " << osdItem->text);
-                    set_text2(osdItem, nullptr, osdItem->text.c_str(),
+                    set_text2(osdItem, nullptr, osdItem->text,
                               osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
                 }
             }
@@ -1073,86 +921,11 @@ void OSD::updateDisplayEverySecond()
                 if (OSDTextFromFile(osdItem))
                 {
                     LOG_DEBUG("OSDFile updated: " << osdItem->osdConfigItem->file << " == " << osdItem->text);
-                    set_text2(osdItem, nullptr, osdItem->text.c_str(),
+                    set_text2(osdItem, nullptr, osdItem->text,
                               osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
                 }
             }
             osd_items_to_update--;
-        }
-        // The flag ensures that only 1 OSD object is updated
-        // on calling OSD::updateDisplayEverySecond()
-        // this should relieve the system
-        if (flag != 0)
-        {
-            /*
-            // Format and update system time
-            if ((flag & 1) && osd.time_enabled)
-            {
-                strftime(timeFormatted, sizeof(timeFormatted), osd.time_format, ltime);
-
-                set_text(&osdTime, nullptr, timeFormatted,
-                         osd.pos_time_x, osd.pos_time_y, osd.time_rotation);
-
-                flag ^= 1;
-                return;
-            }
-
-            // Format and update user text
-            if ((flag & 2) && osd.user_text_enabled)
-            {
-                std::string user_text = osd.user_text_format;
-
-                if (strstr(osd.user_text_format, "%hostname") != nullptr)
-                {
-                    replace(user_text, "%hostname", hostname);
-                }
-
-                if (strstr(osd.user_text_format, "%ipaddress") != nullptr)
-                {
-                    replace(user_text, "%ipaddress", ip);
-                }
-
-                if (strstr(osd.user_text_format, "%fps") != nullptr)
-                {
-                    char fps[4];
-                    snprintf(fps, 4, "%3d", osd.stats.fps);
-                    replace(user_text, "%fps", fps);
-                }
-
-                if (strstr(osd.user_text_format, "%bps") != nullptr)
-                {
-                    char bps[8];
-                    snprintf(bps, 8, "%5d", osd.stats.bps);
-                    replace(user_text, "%bps", bps);
-                }
-
-                set_text(&osdUser, nullptr, user_text.c_str(),
-                         osd.pos_user_text_x, osd.pos_user_text_y, osd.user_text_rotation);
-
-                user_text.clear();
-
-                flag ^= 2;
-                return;
-            }
-
-            // Format and update uptime
-            if ((flag & 4) && osd.uptime_enabled)
-            {
-                unsigned long currentUptime = getSystemUptime();
-                unsigned long days = currentUptime / 86400;
-                unsigned long hours = (currentUptime % 86400) / 3600;
-                unsigned long minutes = (currentUptime % 3600) / 60;
-                // unsigned long seconds = currentUptime % 60;
-
-                snprintf(uptimeFormatted, sizeof(uptimeFormatted), osd.uptime_format, days, hours, minutes);
-
-                set_text(&osdUptm, nullptr, uptimeFormatted,
-                         osd.pos_uptime_x, osd.pos_uptime_y, osd.uptime_rotation);
-
-                flag ^= 4;
-                return;
-            }
-            */
         }
     }
 }

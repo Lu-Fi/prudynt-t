@@ -1,24 +1,15 @@
 #ifndef OSD_hpp
 #define OSD_hpp
 
-//#include <map>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <memory>
-#include "Config.hpp"
 #include <imp/imp_osd.h>
 #include <imp/imp_encoder.h>
 #include <ifaddrs.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include "schrift.h"
-#include <filesystem>
 #include "Config.hpp"
 #include "Logger.hpp"
-
-namespace fs = std::filesystem;
 
 #if defined(PLATFORM_T31)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
@@ -31,8 +22,8 @@ struct OSDItemV2
     uint8_t *data;
     uint16_t width;
     uint16_t height;
-    std::string text;
-    fs::file_time_type file_time;
+    const char *text;
+    time_t file_time;
     IMPOSDRgnAttrData *rgnAttrData;
     OsdConfigItem *osdConfigItem;
 
@@ -40,8 +31,7 @@ struct OSDItemV2
         : data(nullptr), width(0), height(0), text(""), rgnAttrData(nullptr), osdConfigItem(osdCi) {
 
         int ret;
-
-        //osdConfigItem = new OsdConfigItem(*osdCi);
+        //memset(text, 0, sizeof(text));
 
         imp_rgn = IMP_OSD_CreateRgn(nullptr);
         
@@ -125,11 +115,6 @@ private:
     int last_updated_second;
     const char *parent;
 
-    OSDItem osdTime{};
-    OSDItem osdUser{};
-    OSDItem osdUptm{};
-    OSDItem osdLogo{};
-
     std::vector<OSDItemV2 *> osdItems;
 
     void set_text(OSDItem *osdItem, IMPOSDRgnAttr *rgnAttr, const char *text, int posX, int posY, int angle);
@@ -150,13 +135,11 @@ private:
 
     time_t current;
     struct tm *ltime;
-    struct timeval tm;
 
     char timeFormatted[32];
     char uptimeFormatted[32];
     char fps[4];
     char bps[8];
-    uint8_t flag{0};
     uint8_t osd_items_to_update;
 };
 
