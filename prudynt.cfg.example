@@ -243,3 +243,43 @@ motion: {
 	# roi_1_y: 1080;  # Y coordinate of the bottom-right corner of the first ROI.
 	# roi_count: 1;  # Number of active Regions Of Interest
 };
+
+# OSD items
+# ---------
+osd : 
+{
+  items = ( 
+    {
+      streams = [ 0, 1 ];
+      posX = 10;
+      posY = 10;
+      text = "%datetime";
+    }, 
+    {
+      streams = [ 0, 1 ];
+      posX = -10;
+      posY = 10;
+      text = "%uptime";
+    }, 
+    {
+      streams = [ 0, 1 ];
+      posX = 0;
+      posY = -10;
+      text = "%hostname";
+    }, 
+    {
+      streams = [ 0, 1 ];
+      posX = -10;
+      posY = -10;
+      file = "/usr/share/images/thingino_logo_1.bgra:100:30";
+      # rotation = 90;
+      # transparency = 220;
+    },
+#    {
+#      streams = [ 0 ];
+#      posX = 0;
+#      posY = 10;
+#      file = "/tmp/stream0.osd";
+#    }
+  );
+};
