@@ -19,15 +19,15 @@ extern std::mutex mutex_main; // protects global_restart_rtsp and global_restart
 
 struct AudioFrame
 {
-	std::vector<uint8_t> data;
-	struct timeval time;
+    std::vector<uint8_t> data;
+    struct timeval time;
 };
 
 struct H264NALUnit
 {
-	std::vector<uint8_t> data;
-	struct timeval time;
-	int64_t imp_ts;
+    std::vector<uint8_t> data;
+    struct timeval time;
+    int64_t imp_ts;
 };
 
 struct jpeg_stream
@@ -51,7 +51,8 @@ struct jpeg_stream
         last_subscriber = now;
     }
 
-    bool request_or_overrun() {
+    bool request_or_overrun()
+    {
         return duration_cast<milliseconds>(steady_clock::now() - last_subscriber).count() < 1000;
     }
 
@@ -114,6 +115,7 @@ struct video_stream
 
 extern std::condition_variable global_cv_worker_restart;
 
+extern bool global_restart_osd;
 extern bool global_restart_rtsp;
 extern bool global_restart_video;
 extern bool global_restart_audio;

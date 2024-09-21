@@ -18,6 +18,7 @@ std::condition_variable global_cv_worker_restart;
 
 bool startup = true;
 
+bool global_restart_osd = false;
 bool global_restart_rtsp = false;
 bool global_restart_video = false;
 bool global_restart_audio = false;
@@ -60,7 +61,7 @@ void start_video(int encChn)
 {
     StartHelper sh{encChn};
     int ret = pthread_create(&global_video[encChn]->thread, nullptr, Worker::stream_grabber, static_cast<void *>(&sh));
-    LOG_DEBUG_OR_ERROR(ret, "create video["<< encChn << "] thread");
+    LOG_DEBUG_OR_ERROR(ret, "create video[" << encChn << "] thread");
 
     // wait for initialization done
     sh.has_started.acquire();
@@ -96,7 +97,7 @@ int main(int argc, const char *argv[])
     global_video[0] = std::make_shared<video_stream>(0, &cfg->stream0, "stream0");
     global_video[1] = std::make_shared<video_stream>(1, &cfg->stream1, "stream1");
     global_jpeg[0] = std::make_shared<jpeg_stream>(2, &cfg->stream2);
-    //global_jpeg[1] = std::make_shared<jpeg_stream>(jpeg_stream{3, &cfg->stream3});
+    // global_jpeg[1] = std::make_shared<jpeg_stream>(jpeg_stream{3, &cfg->stream3});
 
 #if defined(AUDIO_SUPPORT)
     global_audio[0] = std::make_shared<audio_stream>(1, 0, 0);
@@ -137,7 +138,7 @@ int main(int argc, const char *argv[])
             {
                 int ret = pthread_create(&motion_thread, nullptr, Motion::run, &motion);
                 LOG_DEBUG_OR_ERROR(ret, "create motion thread");
-            }            
+            }
         }
 
 #if defined(AUDIO_SUPPORT)
@@ -158,20 +159,20 @@ int main(int argc, const char *argv[])
             LOG_DEBUG_OR_ERROR(ret, "create rtsp thread");
         }
 
-        /* we should wait a short period to ensure all services are up 
-         * and running, additionally we add the timespan which is configured as 
+        /* we should wait a short period to ensure all services are up
+         * and running, additionally we add the timespan which is configured as
          * OSD startup delay.
          */
         usleep(250000 + (cfg->stream0.osd.start_delay * 1000) + cfg->stream1.osd.start_delay * 1000);
-        
+
         LOG_DEBUG("main thread is going to sleep");
         std::unique_lock lck(mutex_main);
-        
+
         startup = false;
         global_restart_video = false;
         global_restart_audio = false;
-        global_restart_rtsp = false;        
-        
+        global_restart_rtsp = false;
+
         while (!global_restart_rtsp && !global_restart_video && !global_restart_audio)
             global_cv_worker_restart.wait(lck);
         lck.unlock();

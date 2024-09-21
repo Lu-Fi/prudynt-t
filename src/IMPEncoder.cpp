@@ -279,7 +279,7 @@ void IMPEncoder::initProfile()
         rcAttr->attrRcMode.attrH265Smart.frmQPStep = 3;
         rcAttr->attrRcMode.attrH265Smart.gopQPStep = 15;
         rcAttr->attrRcMode.attrH265Smart.flucLvl = 2;
-#endif //defined(PLATFORM_T30)
+#endif // defined(PLATFORM_T30)
     }
     rcAttr->attrHSkip.hSkipAttr.skipType = IMP_Encoder_STYPE_N1X;
     rcAttr->attrHSkip.hSkipAttr.m = rcAttr->maxGop - 1;
@@ -309,7 +309,8 @@ int IMPEncoder::init()
     initProfile();
 
 #if defined(PLATFORM_T31)
-    if(cfg->stream2.enabled && cfg->stream2.jpeg_channel == encChn && stream->allow_shared) {
+    if (cfg->stream2.enabled && cfg->stream2.jpeg_channel == encChn && stream->allow_shared)
+    {
         ret = IMP_Encoder_SetbufshareChn(2, encChn);
         LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_Encoder_SetbufshareChn(2, " << encChn << ")");
     }
@@ -332,13 +333,7 @@ int IMPEncoder::init()
 
         if (stream->osd.enabled)
         {
-            osd = OSD::createNew(stream->osd, encGrp, encChn, name);
-
-            ret = IMP_System_Bind(&fs, &osd_cell);
-            LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_System_Bind(&fs, &osd_cell)");
-
-            ret = IMP_System_Bind(&osd_cell, &enc);
-            LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_System_Bind(&osd_cell, &enc)");
+            init_osd();
         }
         else
         {
@@ -346,7 +341,7 @@ int IMPEncoder::init()
             LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_System_Bind(&fs, &enc)");
         }
     }
-#if !defined(PLATFORM_T31)    
+#if !defined(PLATFORM_T31)
     else
     {
         IMPEncoderJpegeQl pstJpegeQl;
@@ -369,15 +364,7 @@ int IMPEncoder::deinit()
     {
         if (osd)
         {
-            ret = IMP_System_UnBind(&fs, &osd_cell);
-            LOG_DEBUG_OR_ERROR(ret, "IMP_System_UnBind(&fs, &osd_cell)");
-
-            ret = IMP_System_UnBind(&osd_cell, &enc);
-            LOG_DEBUG_OR_ERROR(ret, "IMP_System_UnBind(&osd_cell, &enc)");
-
-            osd->exit();
-            delete osd;
-            osd = nullptr;
+            exit_osd();
         }
         else
         {
@@ -387,7 +374,6 @@ int IMPEncoder::deinit()
     }
     else
     {
-
         ret = IMP_Encoder_StopRecvPic(encChn);
         LOG_DEBUG("IMP_Encoder_StopRecvPic(" << encChn << ")");
     }
@@ -399,6 +385,40 @@ int IMPEncoder::deinit()
     LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_Encoder_DestroyChn(" << encChn << ")");
 
     return ret;
+}
+
+void IMPEncoder::exit_osd()
+{
+    int ret;
+
+    if (osd != nullptr)
+    {
+        ret = IMP_System_UnBind(&fs, &osd_cell);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_System_UnBind(&fs, &osd_cell)");
+
+        ret = IMP_System_UnBind(&osd_cell, &enc);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_System_UnBind(&osd_cell, &enc)");
+
+        osd->exit();
+        delete osd;
+        osd = nullptr;
+    }
+}
+
+void IMPEncoder::init_osd()
+{
+    int ret;
+
+    if (strcmp(stream->format, "JPEG") != 0 && stream->osd.enabled)
+    {
+        osd = OSD::createNew(stream->osd, encGrp, encChn, name);
+
+        ret = IMP_System_Bind(&fs, &osd_cell);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_System_Bind(&fs, &osd_cell)");
+
+        ret = IMP_System_Bind(&osd_cell, &enc);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_System_Bind(&osd_cell, &enc)");
+    }
 }
 
 int IMPEncoder::destroy()

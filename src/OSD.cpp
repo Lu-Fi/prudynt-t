@@ -1,7 +1,6 @@
 #include <cmath>
 #include "OSD.hpp"
 
-
 #if defined(PLATFORM_T31)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
 #define IMPEncoderCHNStat IMPEncoderChnStat
@@ -15,7 +14,7 @@
 #include <vector>
 
 #include "schrift.h"
-
+/*
 int OSD::renderGlyph(const char *characters)
 {
 
@@ -63,6 +62,106 @@ int OSD::renderGlyph(const char *characters)
                     }
 
                     glyphs[*characters] = g;
+                }
+                free(imageBuffer.pixels);
+            }
+        }
+        ++characters;
+    }
+
+    return 0;
+}
+*/
+
+void OSD::addGlyph(char character, const Glyph& glyph)
+{
+    GlyphEntry* newGlyphs = new GlyphEntry[glyphCount + 1];
+    for (int i = 0; i < glyphCount; ++i)
+    {
+        newGlyphs[i] = glyphs[i];
+    }
+    newGlyphs[glyphCount].character = character;
+    newGlyphs[glyphCount].glyph = glyph;
+    ++glyphCount;
+
+    delete[] glyphs;
+    glyphs = newGlyphs;
+}
+
+Glyph* OSD::findGlyph(char character)
+{
+    for (int i = 0; i < glyphCount; ++i)
+    {
+        if (glyphs[i].character == character)
+        {
+            return &glyphs[i].glyph;
+        }
+    }
+    return nullptr;
+}
+
+void OSD::freeGlyphs()
+{
+    for (int i = 0; i < glyphCount; ++i)
+    {
+        delete[] glyphs[i].glyph.bitmap;
+    }
+    delete[] glyphs;
+    glyphCount = 0;
+}
+
+int OSD::renderGlyph(const char *characters)
+{
+    while (*characters)
+    {
+        SFT_LMetrics lmetrics;
+        SFT_GMetrics gmetrics;
+        SFT_Glyph glyph;
+        SFT_Image imageBuffer;
+
+        if (sft_lmetrics(sft, &lmetrics) == 0 && sft_lookup(sft, *characters, &glyph) == 0)
+        {
+            if (sft_gmetrics(sft, glyph, &gmetrics) == 0)
+            {
+                imageBuffer.width = gmetrics.minWidth;
+                imageBuffer.height = gmetrics.minHeight;
+                imageBuffer.pixels = (uint8_t *)malloc(imageBuffer.width * imageBuffer.height);
+
+                if (sft_render(sft, glyph, imageBuffer) == 0)
+                {
+                    Glyph g;
+                    g.width = imageBuffer.width;
+                    g.height = imageBuffer.height;
+                    g.advance = gmetrics.advanceWidth;
+                    g.xmin = gmetrics.leftSideBearing;
+                    g.ymin = gmetrics.yOffset;
+                    g.glyph = glyph;
+
+                    g.bitmap = new uint8_t[g.width * g.height * 4];
+                    for (int y = 0; y < g.height; ++y)
+                    {
+                        for (int x = 0; x < g.width; ++x)
+                        {
+                            int pixelIndex = y * g.width + x;
+                            uint8_t alpha = ((uint8_t *)imageBuffer.pixels)[pixelIndex];
+                            if (alpha > 0)
+                            {
+                                g.bitmap[pixelIndex * 4] = BGRA_TEXT[0];
+                                g.bitmap[pixelIndex * 4 + 1] = BGRA_TEXT[1];
+                                g.bitmap[pixelIndex * 4 + 2] = BGRA_TEXT[2];
+                                g.bitmap[pixelIndex * 4 + 3] = alpha;
+                            }
+                            else
+                            {
+                                g.bitmap[pixelIndex * 4] = 0;
+                                g.bitmap[pixelIndex * 4 + 1] = 0;
+                                g.bitmap[pixelIndex * 4 + 2] = 0;
+                                g.bitmap[pixelIndex * 4 + 3] = alpha;                                
+                            }
+                        }
+                    }
+
+                    addGlyph(*characters, g);  // Neue Glyphe hinzufügen
                 }
                 free(imageBuffer.pixels);
             }
@@ -141,31 +240,35 @@ int OSD::drawText(uint8_t *image, const char *text, int WIDTH, int HEIGHT, int o
     // Draw text and outline
     while (*text)
     {
+        /*
         auto it = glyphs.find(*text);
         if (it != glyphs.end())
         {
             const Glyph &g = it->second;
-
-            int x = penX + g.xmin + outlineSize;
-            int y = penY + (sft->yScale + g.ymin);
+        */
+        Glyph* g = findGlyph(*text);  // Glyphe suchen
+        if (g != nullptr)  // Wenn Glyphe gefunden wurde
+        {
+            int x = penX + g->xmin + outlineSize;
+            int y = penY + (sft->yScale + g->ymin);
 
             // Draw the outline
-            drawOutline(image, g, x, y, outlineSize, WIDTH, HEIGHT);
+            drawOutline(image, *g, x, y, outlineSize, WIDTH, HEIGHT);
 
             // Draw the actual text
-            for (int j = 0; j < g.height; ++j)
+            for (int j = 0; j < g->height; ++j)
             {
-                for (int i = 0; i < g.width; ++i)
+                for (int i = 0; i < g->width; ++i)
                 {
-                    int srcIndex = (j * g.width + i) * 4;
-                    if (g.bitmap[srcIndex + 3] > 0)
+                    int srcIndex = (j * g->width + i) * 4;
+                    if (g->bitmap[srcIndex + 3] > 0)
                     { // Check alpha value
-                        setPixel(image, x + i, y + j, &g.bitmap[srcIndex], WIDTH, HEIGHT);
+                        setPixel(image, x + i, y + j, &g->bitmap[srcIndex], WIDTH, HEIGHT);
                     }
                 }
             }
 
-            penX += g.advance + (outlineSize * 2);
+            penX += g->advance + (outlineSize * 2);
         }
         ++text;
     }
@@ -180,15 +283,19 @@ int OSD::calculateTextSize(const char *text, uint16_t &width, uint16_t &height, 
 
     while (*text)
     {
+        /*
         auto it = glyphs.find(*text);
         if (it != glyphs.end())
         {
             const Glyph &g = it->second;
-
-            width += g.advance + (outlineSize * 2);
-            if (g.height > height)
+        */
+        Glyph* g = findGlyph(*text);  // Glyphe suchen
+        if (g != nullptr)  // Wenn Glyphe gefunden wurde
+        {
+            width += g->advance + (outlineSize * 2);
+            if (g->height > height)
             {
-                height = g.height;
+                height = g->height;
             }
         }
 
@@ -229,19 +336,19 @@ int OSD::libschrift_init()
     uint8_t *fontData = (uint8_t *)malloc(fileSize);
     if (!fontData)
     {
-        fclose(fontFile);
         LOG_DEBUG("Memory allocation failed for font data.");
+        fclose(fontFile);
         return -1;
     }
 
     size_t bytesRead = fread(fontData, 1, fileSize, fontFile);
     fclose(fontFile);
     LOG_DEBUG(bytesRead);
-    
+
     if (bytesRead != (size_t)fileSize)
     {
-        free(fontData);
         LOG_DEBUG("Error reading font file.");
+        free(fontData);
         return -1;
     }
 
@@ -255,14 +362,16 @@ int OSD::libschrift_init()
 
     if (!sft->font)
     {
-        delete sft; 
-        free(fontData);
         LOG_DEBUG("Unable to load font data.");
+        free(fontData);
+        sft->~SFT();
         return -1;
     }
 
     LOG_DDEBUG("prerender OSD glyph's, xScale:" << sft->xScale << " yScale:" << sft->yScale);
     renderGlyph("01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!§$%&/()=?,.-_:;#'+*~}{} ");
+
+    sft_freefont(sft->font);
 
     free(fontData);
     sft->~SFT();
@@ -421,27 +530,40 @@ int autoFontSize(int pWidth)
 
 void replacestr(char *line, const char *search, const char *replace)
 {
-   int count;
-   char *sp;
+    int count;
+    char *sp;
 
-   if ((sp = strstr(line, search)) == NULL) {
-      return;
-   }
-   int sLen = strlen(search);
-   int rLen = strlen(replace);
-   if (sLen > rLen) {
-      char *src = sp + sLen;
-      char *dst = sp + rLen;
-      while((*dst = *src) != '\0') { dst++; src++; }
-   } else if (sLen < rLen) {
-      int tLen = strlen(sp) - sLen;
-      char *stop = sp + rLen;
-      char *src = sp + sLen + tLen;
-      char *dst = sp + rLen + tLen;
-      while(dst >= stop) { *dst = *src; dst--; src--; }
-   }
-   memcpy(sp, replace, rLen);
-   replacestr(sp + rLen, search, replace);
+    if ((sp = strstr(line, search)) == NULL)
+    {
+        return;
+    }
+    int sLen = strlen(search);
+    int rLen = strlen(replace);
+    if (sLen > rLen)
+    {
+        char *src = sp + sLen;
+        char *dst = sp + rLen;
+        while ((*dst = *src) != '\0')
+        {
+            dst++;
+            src++;
+        }
+    }
+    else if (sLen < rLen)
+    {
+        int tLen = strlen(sp) - sLen;
+        char *stop = sp + rLen;
+        char *src = sp + sLen + tLen;
+        char *dst = sp + rLen + tLen;
+        while (dst >= stop)
+        {
+            *dst = *src;
+            dst--;
+            src--;
+        }
+    }
+    memcpy(sp, replace, rLen);
+    replacestr(sp + rLen, search, replace);
 }
 
 void OSD::rotateBGRAImage(uint8_t *&inputImage, uint16_t &width, uint16_t &height, int angle, bool del = true)
@@ -581,82 +703,90 @@ unsigned char *loadBGRAImage(const char *filepath, size_t &length)
     return data;
 }
 
-bool OSD::OSDTextFromFile(OSDItemV2 *osdItem) 
+bool OSD::OSDTextFromFile(OSDItemV2 *osdItem)
 {
     struct stat fileStat;
-    LOG_DEBUG(osdItem->osdConfigItem->file);
+    char new_text[1024];
 
-    if (stat(osdItem->osdConfigItem->file, &fileStat) != 0) 
+    if (stat(osdItem->osdConfigItem.file, &fileStat) != 0)
     {
-        LOG_ERROR("unable to get stat: " << osdItem->osdConfigItem->file);
-        return false;
+        strcpy(new_text, "-file stat error-");
     }
-
-    if (fileStat.st_mtime != osdItem->file_time) 
+    else
     {
-        osdItem->file_time = fileStat.st_mtime;
-
-        char new_text[1024] = "-empty file-";
-        memset(new_text, 0, sizeof(new_text));
-
-        FILE *file = fopen(osdItem->osdConfigItem->file, "r");
-        if (file != NULL) 
+        if (fileStat.st_mtime != osdItem->file_time)
         {
-            if (fgets(new_text, sizeof(new_text), file) == NULL) 
+            osdItem->file_time = fileStat.st_mtime;
+
+            FILE *file = fopen(osdItem->osdConfigItem.file, "r");
+            if (file != NULL)
             {
-                strncpy(new_text, "-empty file-", 12);
+                if (!fgets(new_text, sizeof(new_text), file))
+                {
+                    strcpy(new_text, "-empty file-");
+                }
+                fclose(file);
             }
-            fclose(file);
+            else
+            {
+                strcpy(new_text, "-file read error-");
+            }
         }
         else
         {
-            strncpy(new_text, "-file error-", 12);
+            return false;
         }
+    }
 
-        if (strcmp(new_text, osdItem->text) != 0)
-        {
-            osdItem->text = strdup(new_text);
-            return true;
-        }
+    if (osdItem->text && strcmp(new_text, osdItem->text) != 0)
+    {
+        free(osdItem->text);
+        osdItem->text = nullptr;
+    }
+
+    if (osdItem->text == nullptr)
+    {
+        osdItem->text = new char[strlen(new_text) + 1];
+        strcpy(osdItem->text, new_text);
+        return true;
     }
 
     return false;
 }
 
-
 bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
 {
     char new_text[1024];
-    strncpy(new_text, osdItem->osdConfigItem->text, sizeof(new_text) - 1);
-    new_text[sizeof(new_text) - 1] = '\0';
+    memset(new_text, 0, sizeof(new_text));
+    strncpy(new_text, osdItem->osdConfigItem.text, sizeof(new_text) - 1);
 
-    if (strstr(osdItem->osdConfigItem->text, "%hostname") != nullptr)
+    if (strstr(osdItem->osdConfigItem.text, "%hostname") != nullptr)
     {
         gethostname(hostname, 64);
         replacestr(new_text, "%hostname", hostname);
     }
 
-    if (strstr(osdItem->osdConfigItem->text, "%ipaddress") != nullptr)
+    if (strstr(osdItem->osdConfigItem.text, "%ipaddress") != nullptr)
     {
         getIp(ip);
         replacestr(new_text, "%ipaddress", ip);
     }
 
-    if (strstr(osdItem->osdConfigItem->text, "%fps") != nullptr)
+    if (strstr(osdItem->osdConfigItem.text, "%fps") != nullptr)
     {
         char fps[4];
         snprintf(fps, 4, "%3d", osd.stats.fps);
         replacestr(new_text, "%fps", fps);
     }
 
-    if (strstr(osdItem->osdConfigItem->text, "%bps") != nullptr)
+    if (strstr(osdItem->osdConfigItem.text, "%bps") != nullptr)
     {
         char bps[8];
         snprintf(bps, 8, "%5d", osd.stats.bps);
         replacestr(new_text, "%bps", bps);
     }
 
-    if (strstr(osdItem->osdConfigItem->text, "%uptime") != nullptr)
+    if (strstr(osdItem->osdConfigItem.text, "%uptime") != nullptr)
     {
         unsigned long currentUptime = getSystemUptime();
         unsigned long days = currentUptime / 86400;
@@ -667,15 +797,22 @@ bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
         replacestr(new_text, "%uptime", uptimeFormatted);
     }
 
-    if (strstr(osdItem->osdConfigItem->text, "%datetime") != nullptr)
+    if (strstr(osdItem->osdConfigItem.text, "%datetime") != nullptr)
     {
         strftime(timeFormatted, sizeof(timeFormatted), osd.time_format, ltime);
         replacestr(new_text, "%datetime", timeFormatted);
     }
 
-    if (strcmp(new_text, osdItem->text) != 0)
+    if (osdItem->text && strcmp(new_text, osdItem->text) != 0)
     {
-        osdItem->text = strdup(new_text);
+        free(osdItem->text);
+        osdItem->text = nullptr;
+    }
+
+    if (osdItem->text == nullptr)
+    {
+        osdItem->text = new char[strlen(new_text) + 1];
+        strcpy(osdItem->text, new_text);
         return true;
     }
 
@@ -736,7 +873,7 @@ void OSD::init()
         LOG_DEBUG("libschrift init failed.");
     }
 
-    //for (OsdConfigItem osdConfigItem : cfg->osdConfigItems)
+    // for (OsdConfigItem osdConfigItem : cfg->osdConfigItems)
     for (int i = 0; i < cfg->numOsdConfigItems; i++)
     {
         OsdConfigItem *osdConfigItem = &cfg->osdConfigItems[i];
@@ -746,17 +883,12 @@ void OSD::init()
         {
             OSDItemV2 *osdItem = new OSDItemV2(osdConfigItem, osdGrp);
 
-            LOG_DEBUG("osdConfigItem " << i << " {" << 
-                "'posX':" << osdItem->osdConfigItem->posX << ", " <<
-                "'posY':" << osdItem->osdConfigItem->posY << ", " <<
-                "'height':" << osdItem->osdConfigItem->height << ", " <<
-                "'width':" << osdItem->osdConfigItem->width << ", " <<
-                "'text':'" << (osdItem->osdConfigItem->text ? osdItem->osdConfigItem->text : "") << "', " <<
-                "'file':'" << (osdItem->osdConfigItem->file ? osdItem->osdConfigItem->file : "") << "'}"
-            );
+            LOG_DEBUG("osdConfigItem " << i << " {" << "'posX':" << osdItem->osdConfigItem.posX << ", " << "'posY':" << osdItem->osdConfigItem.posY << ", " << "'height':" << osdItem->osdConfigItem.height << ", " << "'width':" << osdItem->osdConfigItem.width << ", " << "'text':'" << (osdItem->osdConfigItem.text ? osdItem->osdConfigItem.text : "") << "', " << "'file':'" << (osdItem->osdConfigItem.file ? osdItem->osdConfigItem.file : "") << "'}");
+
+            LOG_DEBUG("test" << (osdItem->osdConfigItem.text == NULL));
 
             // OSD Image
-            if (osdItem->osdConfigItem->width && osdItem->osdConfigItem->height)
+            if (osdItem->osdConfigItem.width && osdItem->osdConfigItem.height)
             {
                 LOG_DEBUG("OSDImage");
                 IMPOSDRgnAttr rgnAttr;
@@ -764,7 +896,7 @@ void OSD::init()
                 IMP_OSD_GetRgnAttr(osdItem->imp_rgn, &rgnAttr);
 
                 size_t imageSize;
-                osdItem->data = loadBGRAImage(osdItem->osdConfigItem->file, imageSize);
+                osdItem->data = loadBGRAImage(osdItem->osdConfigItem.file, imageSize);
 
                 // Verify OSD logo size vs dimensions
                 if ((osd.logo_width * osd.logo_height * 4) == imageSize)
@@ -772,53 +904,52 @@ void OSD::init()
                     rgnAttr.data.picData.pData = osdItem->data;
 
                     // Logo rotation
-                    uint16_t logo_width = osdItem->osdConfigItem->width;
-                    uint16_t logo_height = osdItem->osdConfigItem->height;
-                    if (osdItem->osdConfigItem->rotation)
+                    uint16_t logo_width = osdItem->osdConfigItem.width;
+                    uint16_t logo_height = osdItem->osdConfigItem.height;
+                    if (osdItem->osdConfigItem.rotation)
                     {
                         uint8_t *imageData = static_cast<uint8_t *>(rgnAttr.data.picData.pData);
                         rotateBGRAImage(imageData, logo_width,
-                                        logo_height, osdItem->osdConfigItem->rotation, false);
+                                        logo_height, osdItem->osdConfigItem.rotation, false);
                         rgnAttr.data.picData.pData = imageData;
                     }
 
-                    set_pos(&rgnAttr, osdItem->osdConfigItem->posX,
-                            osdItem->osdConfigItem->posY, logo_width, logo_height, stream_width, stream_height);
+                    set_pos(&rgnAttr, osdItem->osdConfigItem.posX,
+                            osdItem->osdConfigItem.posY, logo_width, logo_height, stream_width, stream_height);
                 }
                 else
                 {
 
-                    LOG_ERROR("Invalid OSD logo dimensions. Imagesize=" << imageSize << ", " << osdItem->osdConfigItem->width
-                                                                        << "*" << osdItem->osdConfigItem->height << "*4=" << (osdItem->osdConfigItem->width * osdItem->osdConfigItem->height * 4));
+                    LOG_ERROR("Invalid OSD logo dimensions. Imagesize=" << imageSize << ", " << osdItem->osdConfigItem.width << "*" << osdItem->osdConfigItem.height << "*4=" << (osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4));
                 }
                 IMP_OSD_SetRgnAttr(osdItem->imp_rgn, &rgnAttr);
             }
             // OSD Text
-            else if (osdItem->osdConfigItem->file)
+            else if (osdItem->osdConfigItem.file != nullptr)
             {
                 LOG_DEBUG("OSDFile");
                 if (OSDTextFromFile(osdItem))
                 {
+                    LOG_DEBUG("OSDFile " << (osdItem->text ? osdItem->text : "NULL"));
                     set_text2(osdItem, nullptr, osdItem->text,
-                                osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
+                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
-            }                
+            }
             // OSD Text
-            else if (osdItem->osdConfigItem->text)
+            else if (osdItem->osdConfigItem.text != nullptr)
             {
-                LOG_DEBUG("OSDText");
+                LOG_DEBUG("OSDText " << (osdItem->text ? osdItem->text : "NULL"));
                 if (OSDTextPlaceholders(osdItem))
                 {
                     set_text2(osdItem, nullptr, osdItem->text,
-                                osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
+                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
             }
 
-            LOG_DEBUG("osdItem " << i << " {" << 
-                "'text':" << osdItem->text << ", " <<
-                "'length':" << strlen(osdItem->text) << ", " <<
-                "'imp_rgn':" << osdItem->imp_rgn << "'}"
-            );
+            if (osdItem->text != NULL)
+            {
+                LOG_DEBUG("osdItem " << i << " {" << "'text':" << osdItem->text << ", " << "'length':" << strlen(osdItem->text) << ", " << "'imp_rgn':" << osdItem->imp_rgn << "'}");
+            }
 
             if (osdItem->data)
             {
@@ -864,7 +995,6 @@ int OSD::exit()
 
     for (OSDItemV2 *osdItem : osdItems)
     {
-
         if (osdItem)
         {
             ret = IMP_OSD_ShowRgn(osdItem->imp_rgn, osdGrp, 0);
@@ -882,7 +1012,8 @@ int OSD::exit()
     ret = IMP_OSD_DestroyGroup(osdGrp);
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_DestroyGroup(" << osdGrp << ")");
 
-    sft_freefont(sft->font);
+    freeGlyphs();
+    
     return 0;
 }
 
@@ -904,25 +1035,25 @@ void OSD::updateDisplayEverySecond()
         {
             OSDItemV2 *osdItem = osdItems[osd_items_to_update - 1];
 
-            if (osdItem->osdConfigItem->width && osdItem->osdConfigItem->height)
+            if (osdItem->osdConfigItem.width && osdItem->osdConfigItem.height)
             {
             }
-            else if (osdItem->osdConfigItem->text)
+            else if (osdItem->osdConfigItem.text)
             {
                 if (OSDTextPlaceholders(osdItem))
                 {
-                    LOG_DEBUG("OSDTextPlaceholders updated: " << osdItem->osdConfigItem->text << " == " << osdItem->text);
+                    LOG_DEBUG("OSDTextPlaceholders updated: " << osdItem->osdConfigItem.text << " == " << osdItem->text);
                     set_text2(osdItem, nullptr, osdItem->text,
-                              osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
+                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
             }
-            else if (osdItem->osdConfigItem->file)
+            else if (osdItem->osdConfigItem.file)
             {
                 if (OSDTextFromFile(osdItem))
                 {
-                    LOG_DEBUG("OSDFile updated: " << osdItem->osdConfigItem->file << " == " << osdItem->text);
+                    LOG_DEBUG("OSDFile updated: " << osdItem->osdConfigItem.file << " == " << osdItem->text);
                     set_text2(osdItem, nullptr, osdItem->text,
-                              osdItem->osdConfigItem->posX, osdItem->osdConfigItem->posY, osdItem->osdConfigItem->rotation);
+                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
             }
             osd_items_to_update--;

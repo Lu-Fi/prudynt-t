@@ -82,12 +82,12 @@ void *Worker::jpeg_grabber(void *arg)
 
     /* targetFps is set to stream.fps or stream.jpeg_idle_fps
      *  depending on whether a client is connected or not
-    */
+     */
     int targetFps = global_jpeg[jpgChn]->stream->jpeg_idle_fps;
 
     uint32_t bps{0}; // Bytes per second
     uint32_t fps{0}; // frames per second
- 
+
     // timestamp for stream stats calculation
     unsigned long long ms{0};
     gettimeofday(&global_jpeg[jpgChn]->stream->stats.ts, NULL);
@@ -109,13 +109,13 @@ void *Worker::jpeg_grabber(void *arg)
     while (global_jpeg[jpgChn]->running)
     {
         /*
-        * if jpeg_idle_fps = 0, the thread is put into sleep until a client is connected.
-        * if jpeg_idle_fps > 0, we try to reach a frame rate of stream.jpeg_idle_fps. enen if no client is connected.
-        * if a client is connected via WS / HTTP we try to reach a framerate of stream.fps
-        * the thread will fallback into idle / sleep mode if no client request was made for more than a second
-        */
+         * if jpeg_idle_fps = 0, the thread is put into sleep until a client is connected.
+         * if jpeg_idle_fps > 0, we try to reach a frame rate of stream.jpeg_idle_fps. enen if no client is connected.
+         * if a client is connected via WS / HTTP we try to reach a framerate of stream.fps
+         * the thread will fallback into idle / sleep mode if no client request was made for more than a second
+         */
         auto now = steady_clock::now();
-        
+
         std::unique_lock lck(mutex_main);
         bool request_or_overrun = global_jpeg[jpgChn]->request_or_overrun();
         lck.unlock();
@@ -126,14 +126,15 @@ void *Worker::jpeg_grabber(void *arg)
 
             // we remove targetFps/10 millisecond's as image creation time
             // by this we get besser FPS results
-            if(targetFps && diff_last_image >= ((1000/targetFps)-targetFps/10))
-            {   
+            if (targetFps && diff_last_image >= ((1000 / targetFps) - targetFps / 10))
+            {
                 // check if current jpeg channal is running if not start it
-                if(!global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->active) {
-                    
-                    /* required video channel was not running, we need to start it  
-                    * and set run_for_jpeg as a reason.
-                    */
+                if (!global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->active)
+                {
+
+                    /* required video channel was not running, we need to start it
+                     * and set run_for_jpeg as a reason.
+                     */
                     std::unique_lock<std::mutex> lock_stream{mutex_main};
                     global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = true;
                     global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->should_grab_frames.notify_one();
@@ -142,15 +143,15 @@ void *Worker::jpeg_grabber(void *arg)
                 }
 
                 // subscriber is connected
-                if(request_or_overrun) 
+                if (request_or_overrun)
                 {
-                    if(targetFps != global_jpeg[jpgChn]->stream->fps)
+                    if (targetFps != global_jpeg[jpgChn]->stream->fps)
                         targetFps = global_jpeg[jpgChn]->stream->fps;
                 }
                 // no subscriber is connected
                 else
                 {
-                    if(targetFps != global_jpeg[jpgChn]->stream->jpeg_idle_fps)
+                    if (targetFps != global_jpeg[jpgChn]->stream->jpeg_idle_fps)
                         targetFps = global_jpeg[jpgChn]->stream->jpeg_idle_fps;
                 }
 
@@ -163,7 +164,7 @@ void *Worker::jpeg_grabber(void *arg)
                         bps += stream.pack->length;
 
                         //  Check for success
-                        const char *tempPath = "/tmp/snapshot.tmp";             // Temporary path
+                        const char *tempPath = "/tmp/snapshot.tmp";                     // Temporary path
                         const char *finalPath = global_jpeg[jpgChn]->stream->jpeg_path; // Final path for the JPEG snapshot
 
                         // Open and create temporary file with read and write permissions
@@ -200,7 +201,8 @@ void *Worker::jpeg_grabber(void *arg)
                     {
                         global_jpeg[jpgChn]->stream->stats.fps = fps;
                         global_jpeg[jpgChn]->stream->stats.bps = bps;
-                        fps = 0; bps = 0;
+                        fps = 0;
+                        bps = 0;
                         gettimeofday(&global_jpeg[jpgChn]->stream->stats.ts, NULL);
 
                         LOG_DDEBUG("JPG " << jpgChn << 
@@ -222,8 +224,7 @@ void *Worker::jpeg_grabber(void *arg)
         }
         else
         {
-            LOG_DDEBUG("JPEG LOCK" << 
-                       " channel:" << jpgChn);
+            LOG_DDEBUG("JPEG LOCK" << " channel:" << jpgChn);
 
             global_jpeg[jpgChn]->stream->stats.bps = 0;
             global_jpeg[jpgChn]->stream->stats.fps = 0;
@@ -240,8 +241,7 @@ void *Worker::jpeg_grabber(void *arg)
             global_jpeg[jpgChn]->is_activated.release();
             global_jpeg[jpgChn]->active = true;
 
-            LOG_DDEBUG("JPEG UNLOCK" << 
-                       " channel:" << jpgChn);            
+            LOG_DDEBUG("JPEG UNLOCK" << " channel:" << jpgChn);
         }
     }
 
@@ -291,20 +291,20 @@ void *Worker::stream_grabber(void *arg)
 
     /* 'active' indicates, the thread is activly polling and grabbing images
      * 'running' describes the runlevel of the thread, if this value is set to false
-     *           the thread exits and cleanup all ressources 
+     *           the thread exits and cleanup all ressources
      */
     global_video[encChn]->active = true;
     global_video[encChn]->running = true;
     while (global_video[encChn]->running)
     {
-        /* bool helper to check if this is the active jpeg channel and a jpeg is requested while 
+        /* bool helper to check if this is the active jpeg channel and a jpeg is requested while
          * the channel is inactive
          */
         bool run_for_jpeg = (encChn == global_jpeg[0]->stream->jpeg_channel && global_video[encChn]->run_for_jpeg);
 
-        /* now we need to verify that 
+        /* now we need to verify that
          * 1. a client is connected (hasDataCallback)
-         * 2. a jpeg is requested 
+         * 2. a jpeg is requested
          */
         if (global_video[encChn]->hasDataCallback || run_for_jpeg)
         {
@@ -407,13 +407,14 @@ void *Worker::stream_grabber(void *arg)
 
                     /* currently we write into osd and stream stats,
                      * osd will be removed and redesigned in future
-                    */
+                     */
                     global_video[encChn]->stream->stats.bps = bps;
                     global_video[encChn]->stream->osd.stats.bps = bps;
                     global_video[encChn]->stream->stats.fps = fps;
                     global_video[encChn]->stream->osd.stats.fps = fps;
 
-                    fps = 0; bps = 0;
+                    fps = 0;
+                    bps = 0;
                     gettimeofday(&global_video[encChn]->stream->stats.ts, NULL);
                     global_video[encChn]->stream->osd.stats.ts = global_video[encChn]->stream->stats.ts;
                     /*
@@ -453,7 +454,7 @@ void *Worker::stream_grabber(void *arg)
             global_video[encChn]->stream->osd.stats.bps = 0;
             global_video[encChn]->stream->osd.stats.fps = 0;
 
-            std::unique_lock<std::mutex> lock_stream{mutex_main};           
+            std::unique_lock<std::mutex> lock_stream{mutex_main};
             global_video[encChn]->active = false;
             while (global_video[encChn]->onDataCallback == nullptr && !global_restart_video && !global_video[encChn]->run_for_jpeg)
                 global_video[encChn]->should_grab_frames.wait(lock_stream);
@@ -461,8 +462,7 @@ void *Worker::stream_grabber(void *arg)
             global_video[encChn]->active = true;
             global_video[encChn]->is_activated.release();
 
-            LOG_DDEBUG("VIDEO UNLOCK" << 
-                       " channel:" << encChn);           
+            LOG_DDEBUG("VIDEO UNLOCK" << " channel:" << encChn);
         }
     }
 
@@ -559,8 +559,7 @@ void *Worker::audio_grabber(void *arg)
         reframer = std::make_unique<AudioReframer>(
             global_audio[encChn]->imp_audio->sample_rate,
             /* inputSamplesPerFrame */ global_audio[encChn]->imp_audio->sample_rate * 0.040,
-            /* outputSamplesPerFrame */ 1024
-        );
+            /* outputSamplesPerFrame */ 1024);
     }
 
     // inform main that initialization is complete
@@ -568,7 +567,7 @@ void *Worker::audio_grabber(void *arg)
 
     /* 'active' indicates, the thread is activly polling and grabbing images
      * 'running' describes the runlevel of the thread, if this value is set to false
-     *           the thread exits and cleanup all ressources 
+     *           the thread exits and cleanup all ressources
      */
     global_audio[encChn]->active = true;
     global_audio[encChn]->running = true;
@@ -597,12 +596,11 @@ void *Worker::audio_grabber(void *arg)
                         IMPAudioFrame reframed = {
                             .bitwidth = frame.bitwidth,
                             .soundmode = frame.soundmode,
-                            .virAddr = reinterpret_cast<uint32_t*>(frameData.data()),
+                            .virAddr = reinterpret_cast<uint32_t *>(frameData.data()),
                             .phyAddr = frame.phyAddr,
                             .timeStamp = audio_ts,
                             .seq = frame.seq,
-                            .len = static_cast<int>(frameData.size() * sizeof(int16_t))
-                        };
+                            .len = static_cast<int>(frameData.size() * sizeof(int16_t))};
                         process_frame(encChn, reframed);
                     }
                 }
@@ -645,10 +643,37 @@ void *Worker::update_osd(void *arg)
 
     LOG_DEBUG("start osd update thread.");
 
+    bool restart_done = false;
     global_osd_thread_signal = true;
 
     while (global_osd_thread_signal)
     {
+
+        std::unique_lock lck(mutex_main);
+        if (global_restart_osd)
+        {
+            for (auto v : global_video)
+            {
+                if (v != nullptr && v->imp_encoder->osd != nullptr)
+                {
+                    v->imp_encoder->exit_osd();
+                }
+            }
+
+            usleep(THREAD_SLEEP);
+
+            for (auto v : global_video)
+            {
+                if (v != nullptr && v->imp_encoder->osd == nullptr)
+                {
+                    v->imp_encoder->init_osd();
+                }
+            }
+
+            global_restart_osd = false;
+        }
+        lck.unlock();
+
         for (auto v : global_video)
         {
             if (v != nullptr)
@@ -673,6 +698,10 @@ void *Worker::update_osd(void *arg)
                             }
                         }
                     }
+                }
+                else
+                {
+                    usleep(THREAD_SLEEP);
                 }
             }
         }

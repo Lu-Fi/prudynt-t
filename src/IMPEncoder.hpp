@@ -41,19 +41,21 @@ public:
         init();
     }
 
-    ~IMPEncoder(){
+    ~IMPEncoder()
+    {
         destroy();
     };
 
     int init();
     int deinit();
     int destroy();
+    void exit_osd();
+    void init_osd();
     static void flush(int encChn);
 
     OSD *osd = nullptr;
 
 private:
-    
     const char *name{};
 
     IMPEncoderCHNAttr chnAttr{};

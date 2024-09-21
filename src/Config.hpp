@@ -3,6 +3,7 @@
 #include <set>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <functional>
 #include <libconfig.h++>
@@ -12,16 +13,16 @@
 //~65k
 #define ENABLE_LOG_DEBUG
 
-//Some more debug output not usefull for users (Developer Debug)
+// Some more debug output not usefull for users (Developer Debug)
 #define DDEBUG
 
-//enable audio support
+// enable audio support
 #define AUDIO_SUPPORT
-//enable audio processing library
+// enable audio processing library
 #define LIB_AUDIO_PROCESSING
 
-//disable tunings (debugging)
-//#define NO_TUNINGS
+// disable tunings (debugging)
+// #define NO_TUNINGS
 
 #define IMP_AUTO_VALUE 16384
 #define OSD_AUTO_VALUE 16384
@@ -61,7 +62,8 @@
 
 #define OSD_STREAMS 2
 
-struct OsdConfigItem{
+struct OsdConfigItem
+{
     bool streams[OSD_STREAMS];
     int posX;
     int posY;
@@ -69,71 +71,124 @@ struct OsdConfigItem{
     int height;
     int transparency;
     int rotation;
-    const char *text;
-    const char *file;
+    char *text;
+    char *file;
+    int flags;
 
-    OsdConfigItem() 
-        : posX(0), posY(0), width(0), height(0), 
-          transparency(255), rotation(0), text(nullptr), file(nullptr) 
+    OsdConfigItem()
+        : posX(0), posY(0), width(0), height(0),
+          transparency(255), rotation(0), text(nullptr), file(nullptr), flags(0)
     {
-        for (int i = 0; i < OSD_STREAMS; ++i) {
+        for (int i = 0; i < OSD_STREAMS; ++i)
+        {
             streams[i] = false;
         }
+    };
+
+    ~OsdConfigItem()
+    {
+        delete[] text;
+        delete[] file;
     }
+
+    void assign_or_update(const OsdConfigItem *osdConfigItem)
+    {
+        for (int i = 0; i < OSD_STREAMS; ++i)
+        {
+            streams[i] = osdConfigItem->streams[i];
+        }
+
+        posX = osdConfigItem->posX;
+        posY = osdConfigItem->posY;
+        width = osdConfigItem->width;
+        height = osdConfigItem->height;
+        transparency = osdConfigItem->transparency;
+        rotation = osdConfigItem->rotation;
+
+        if (osdConfigItem->text)
+        {
+            delete[] text;
+            text = new char[strlen(osdConfigItem->text) + 1];
+            strcpy(text, osdConfigItem->text);
+        }
+        else
+        {
+            text = nullptr;
+        }
+
+        if (osdConfigItem->file)
+        {
+            delete[] file;
+            file = new char[strlen(osdConfigItem->file) + 1];
+            strcpy(file, osdConfigItem->file);
+        }
+        else
+        {
+            file = nullptr;
+        }
+    };
 };
 
-struct roi{
+struct roi
+{
     int p0_x;
     int p0_y;
     int p1_x;
     int p1_y;
 };
 
-template<typename T>
-struct ConfigItem {
+template <typename T>
+struct ConfigItem
+{
     const char *path;
-    T& value;
+    T &value;
     T defaultValue;
-    std::function<bool(const T&)> validate;
+    std::function<bool(const T &)> validate;
     bool noSave;
     const char *procPath;
 };
 
-struct _stream_stats {
+struct _stream_stats
+{
     uint32_t bps;
-	uint8_t fps;
-	struct timeval ts;
+    uint8_t fps;
+    struct timeval ts;
 };
 
-struct _regions {
+struct _regions
+{
     int time;
     int user;
     int uptime;
     int logo;
 };
-struct _general {
+struct _general
+{
     const char *loglevel;
     int osd_pool_size;
     int imp_polling_timeout;
 };
-struct _rtsp {
+struct _rtsp
+{
     int port;
     int est_bitrate;
     int out_buffer_size;
-    int send_buffer_size;		
+    int send_buffer_size;
     bool auth_required;
     const char *username;
     const char *password;
     const char *name;
 };
-struct _sensor {
+struct _sensor
+{
     int fps;
     int width;
     int height;
     const char *model;
     unsigned int i2c_address;
 };
-struct _image {
+struct _image
+{
     int contrast;
     int sharpness;
     int saturation;
@@ -156,10 +211,10 @@ struct _image {
     int core_wb_mode;
     int wb_rgain;
     int wb_bgain;
-
 };
-#if defined(AUDIO_SUPPORT)        
-struct _audio {
+#if defined(AUDIO_SUPPORT)
+struct _audio
+{
     bool input_enabled;
     const char *input_format;
     int input_vol;
@@ -167,16 +222,17 @@ struct _audio {
     int input_gain;
     int input_sample_rate;
 #if defined(LIB_AUDIO_PROCESSING)
-    int input_alc_gain;  
-    int input_noise_suppression;            
+    int input_alc_gain;
+    int input_noise_suppression;
     bool input_high_pass_filter;
     bool input_agc_enabled;
     int input_agc_target_level_dbfs;
-    int input_agc_compression_gain_db;    
+    int input_agc_compression_gain_db;
 #endif
 };
-#endif      
-struct _osd {            
+#endif
+struct _osd
+{
     int font_size;
     int font_stroke_size;
     int font_xscale;
@@ -201,13 +257,13 @@ struct _osd {
     int pos_logo_y;
     int logo_transparency;
     int logo_rotation;
-    int start_delay;            
-    bool enabled;            
+    int start_delay;
+    bool enabled;
     bool time_enabled;
     bool user_text_enabled;
     bool uptime_enabled;
     bool logo_enabled;
-    bool font_stroke_enabled;            
+    bool font_stroke_enabled;
     const char *font_path;
     const char *time_format;
     const char *uptime_format;
@@ -218,8 +274,9 @@ struct _osd {
     _regions regions;
     _stream_stats stats;
     std::atomic<int> thread_signal;
-};  
-struct _stream {
+};
+struct _stream
+{
     int gop;
     int max_gop;
     int fps;
@@ -246,11 +303,12 @@ struct _stream {
     const char *jpeg_path;
     _osd osd;
     _stream_stats stats;
-#if defined(AUDIO_SUPPORT)    
+#if defined(AUDIO_SUPPORT)
     bool audio_enabled;
 #endif
-};	
-struct _motion {
+};
+struct _motion
+{
     int monitor_stream;
     int debounce_time;
     int post_time;
@@ -270,7 +328,8 @@ struct _motion {
     const char *script_path;
     std::array<roi, 52> rois;
 };
-struct _websocket {
+struct _websocket
+{
     bool enabled;
     bool ws_secured;
     bool http_secured;
@@ -281,54 +340,66 @@ struct _websocket {
     const char *usertoken{""};
 };
 
-class CFG {
-	public:
+class CFG
+{
+public:
+    bool config_loaded = false;
+    libconfig::Config lc{};
+    std::string filePath{};
 
-        bool config_loaded = false;
-        libconfig::Config lc{};
-        std::string filePath{};
-
-		CFG();
-        void load();
-        static CFG *createNew();
-        bool readConfig();
-        bool updateConfig();
+    CFG();
+    void load();
+    static CFG *createNew();
+    bool readConfig();
+    bool updateConfig();
 
 #if defined(AUDIO_SUPPORT)
-        _audio audio{};
-#endif  
-		_general general{};
-		_rtsp rtsp{};
-		_sensor sensor{};
-        _image image{};
-		_stream stream0{};
-        _stream stream1{};
-		_stream stream2{};
-		_motion motion{};
-        _websocket websocket{};
+    _audio audio{};
+#endif
+    _general general{};
+    _rtsp rtsp{};
+    _sensor sensor{};
+    _image image{};
+    _stream stream0{};
+    _stream stream1{};
+    _stream stream2{};
+    _motion motion{};
+    _websocket websocket{};
 
-        // new osdItems 
-        // std::vector<OsdConfigItem> osdConfigItems{};
-        int numOsdConfigItems{0};
-        OsdConfigItem *osdConfigItems;
+    // new osdItems
+    // std::vector<OsdConfigItem> osdConfigItems{};
+    int numOsdConfigItems{0};
+    OsdConfigItem *osdConfigItems;
 
     template <typename T>
-    T get(const std::string &name) {
+    T get(const std::string &name)
+    {
         T result;
         std::vector<ConfigItem<T>> *items = nullptr;
-        if constexpr (std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<T, bool>)
+        {
             items = &boolItems;
-        } else if constexpr (std::is_same_v<T, const char*>) {
+        }
+        else if constexpr (std::is_same_v<T, const char *>)
+        {
             items = &charItems;
-        } else if constexpr (std::is_same_v<T, int>) {
+        }
+        else if constexpr (std::is_same_v<T, int>)
+        {
             items = &intItems;
-        } else if constexpr (std::is_same_v<T, unsigned int>) {
+        }
+        else if constexpr (std::is_same_v<T, unsigned int>)
+        {
             items = &uintItems;
-        } else {
+        }
+        else
+        {
             return result;
         }
-        for (auto &item : *items) {
-            if (item.path == name) {
+        for (auto &item : *items)
+        {
+            if (item.path == name)
+            {
                 return item.value;
             }
         }
@@ -336,27 +407,42 @@ class CFG {
     }
 
     template <typename T>
-    bool set(const std::string &name, T value, bool noSave = false) {
-        //std::cout << name << "=" << value << std::endl;
+    bool set(const std::string &name, T value, bool noSave = false)
+    {
+        // std::cout << name << "=" << value << std::endl;
         std::vector<ConfigItem<T>> *items = nullptr;
-        if constexpr (std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<T, bool>)
+        {
             items = &boolItems;
-        } else if constexpr (std::is_same_v<T, const char*>) {
+        }
+        else if constexpr (std::is_same_v<T, const char *>)
+        {
             items = &charItems;
-        } else if constexpr (std::is_same_v<T, int>) {
+        }
+        else if constexpr (std::is_same_v<T, int>)
+        {
             items = &intItems;
-        } else if constexpr (std::is_same_v<T, unsigned int>) {
+        }
+        else if constexpr (std::is_same_v<T, unsigned int>)
+        {
             items = &uintItems;
-        } else {
+        }
+        else
+        {
             return false;
         }
-        for (auto &item : *items) {
-            if (item.path == name) {
-                if (item.validate(value)) {
+        for (auto &item : *items)
+        {
+            if (item.path == name)
+            {
+                if (item.validate(value))
+                {
                     item.value = value;
                     item.noSave = noSave;
                     return true;
-                } else {
+                }
+                else
+                {
                     return false;
                 }
             }
@@ -364,17 +450,16 @@ class CFG {
         return false;
     }
 
-    private:
+private:
+    std::vector<ConfigItem<bool>> boolItems{};
+    std::vector<ConfigItem<const char *>> charItems{};
+    std::vector<ConfigItem<int>> intItems{};
+    std::vector<ConfigItem<unsigned int>> uintItems{};
 
-        std::vector<ConfigItem<bool>> boolItems{};
-        std::vector<ConfigItem<const char *>> charItems{};
-        std::vector<ConfigItem<int>> intItems{};
-        std::vector<ConfigItem<unsigned int>> uintItems{};
-
-        std::vector<ConfigItem<bool>> getBoolItems();
-        std::vector<ConfigItem<const char *>> getCharItems() ;
-        std::vector<ConfigItem<int>> getIntItems();
-        std::vector<ConfigItem<unsigned int>> getUintItems();
+    std::vector<ConfigItem<bool>> getBoolItems();
+    std::vector<ConfigItem<const char *>> getCharItems();
+    std::vector<ConfigItem<int>> getIntItems();
+    std::vector<ConfigItem<unsigned int>> getUintItems();
 };
 
 // The configuration is kept in a global singleton that's accessed via this

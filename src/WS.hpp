@@ -17,7 +17,7 @@ class WS
 {
 public:
         void start();
-        static void *run(void* arg);
+        static void *run(void *arg);
 
 private:
         lws_protocols protocols{};
@@ -41,7 +41,9 @@ private:
         static signed char motion_roi_callback(struct lejp_ctx *ctx, char reason);
         static signed char info_callback(struct lejp_ctx *ctx, char reason);
         static signed char action_callback(struct lejp_ctx *ctx, char reason);
+        static signed char osd_v2_callback(struct lejp_ctx *ctx, char reason);
+        static signed char osd_v2_item_callback(struct lejp_ctx *ctx, char reason);
 };
 
-        static uint32_t global_session_id = 0;
+static uint32_t global_session_id = 0;
 #endif
