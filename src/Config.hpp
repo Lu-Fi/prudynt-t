@@ -147,8 +147,8 @@ struct ConfigItem
     T &value;
     T defaultValue;
     std::function<bool(const T &)> validate;
-    bool noSave;
-    const char *procPath;
+    bool noSave = false;
+    const char *procPath = nullptr;
 };
 
 struct _stream_stats
@@ -378,7 +378,7 @@ public:
     template <typename T>
     T get(const std::string &name)
     {
-        T result;
+        T result = T{};
         std::vector<ConfigItem<T>> *items = nullptr;
         if constexpr (std::is_same_v<T, bool>)
         {

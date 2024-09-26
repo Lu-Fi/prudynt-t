@@ -426,7 +426,6 @@ int autoFontSize(int pWidth)
 
 void replacestr(char *line, const char *search, const char *replace)
 {
-    int count;
     char *sp;
 
     if ((sp = strstr(line, search)) == NULL)
@@ -758,13 +757,13 @@ void OSD::init()
     ret = IMP_OSD_CreateGroup(osdGrp);
 
     int fontSize = autoFontSize(channelAttributes.encAttr.picWidth);
-    int autoOffset = round((float)(channelAttributes.encAttr.picWidth * 0.004));
+    //int autoOffset = round((float)(channelAttributes.encAttr.picWidth * 0.004));
 
     if (osd.font_size == OSD_AUTO_VALUE)
     {
         // use cfg->set to set noSave, so auto values will not written to config
         char tmpPath[22];
-        snprintf(tmpPath, sizeof(tmpPath), "stream%d.osd.font_size\0", encChn);
+        snprintf(tmpPath, sizeof(tmpPath), "stream%d.osd.font_size", encChn);
         cfg->set<int>(tmpPath, fontSize, true);
     }
 
@@ -803,7 +802,7 @@ void OSD::init()
                 osdItem->data = loadBGRAImage(osdItem->osdConfigItem.file, imageSize);
 
                 // Verify OSD logo size vs dimensions
-                if ((osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4) == imageSize)
+                if ((osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4) == (int)imageSize)
                 {
                     rgnAttr.data.picData.pData = osdItem->data;
 

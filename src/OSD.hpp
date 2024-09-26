@@ -89,7 +89,7 @@ class OSD
 {
 public:
     static OSD *createNew(_osd &osd, int osdGrp, int encChn, const char *parent);
-    OSD(_osd &osd, int osdGrp, int encChn, const char *parent) : osd(osd), osdGrp(osdGrp), encChn(encChn), parent(parent)
+    OSD(_osd &osd, int osdGrp, int encChn, const char *parent) : osd(osd), osdGrp(osdGrp), encChn(encChn)
     {
         init();
     }
@@ -128,7 +128,7 @@ private:
 
     _osd &osd;
     int last_updated_second;
-    const char *parent;
+    
 
     std::vector<OSDItemV2 *> osdItems;
 

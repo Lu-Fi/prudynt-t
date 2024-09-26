@@ -56,8 +56,6 @@ public:
     OSD *osd = nullptr;
 
 private:
-    const char *name{};
-
     IMPEncoderCHNAttr chnAttr{};
     void initProfile();
 
@@ -68,6 +66,7 @@ private:
     _stream *stream{};
     int encChn{};
     int encGrp{};
+    const char *name{};
 };
 
 #endif
