@@ -771,8 +771,6 @@ void CFG::load()
                                     isValid = false;
                                 }
 
-                                std::cout << "token: " << token << " " << strlen(token) << std::endl;
-
                                 if (isValid && strchr(file, *delimiter))
                                 {
                                     token = strtok_r(nullptr, delimiter, &file);
@@ -785,8 +783,6 @@ void CFG::load()
                                 {
                                     isValid = false;
                                 }
-
-                                std::cout << "token: " << token << " " << strlen(token) << std::endl;
 
                                 if (isValid && !strchr(file, *delimiter))
                                 {
@@ -801,15 +797,12 @@ void CFG::load()
                                     isValid = false;
                                 }
 
-                                std::cout << "token: " << token << " " << strlen(token) << std::endl;
-                                std::cout << "osdConfigItem.file: " << osdConfigItem.file << std::endl;
-
                                 free(file);
                             }
 
                             if (isValid)
                             {
-
+                                /*
                                 std::cout << "osdItem " << i << "\r\n{\r\n"
                                           << "  posX: " << osdConfigItem.posX << "\r\n"
                                           << "  posY: " << osdConfigItem.posY << "\r\n"
@@ -820,6 +813,7 @@ void CFG::load()
                                           << "  transparency: " << osdConfigItem.transparency << "\r\n"
                                           << "  rotation: " << osdConfigItem.rotation << "\r\n"
                                           << "  isValid: " << isValid << "\r\n}" << std::endl;
+                                */
 
                                 osdConfigItems[n++].assign_or_update(&osdConfigItem);
                             }
