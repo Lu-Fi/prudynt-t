@@ -9,12 +9,13 @@
 #include <libconfig.h++>
 #include <sys/time.h>
 #include <any>
+#include <mutex>
 
 //~65k
 #define ENABLE_LOG_DEBUG
 
 // Some more debug output not usefull for users (Developer Debug)
-#define DDEBUG
+// #define DDEBUG
 
 // enable audio support
 #define AUDIO_SUPPORT
@@ -61,6 +62,8 @@
 #endif
 
 #define OSD_STREAMS 2
+
+extern std::mutex mutex_main;
 
 struct OsdConfigItem
 {
@@ -155,19 +158,13 @@ struct _stream_stats
     struct timeval ts;
 };
 
-struct _regions
-{
-    int time;
-    int user;
-    int uptime;
-    int logo;
-};
 struct _general
 {
     const char *loglevel;
     int osd_pool_size;
     int imp_polling_timeout;
 };
+
 struct _rtsp
 {
     int port;
@@ -239,39 +236,14 @@ struct _osd
     int font_yscale;
     int font_stroke;
     int font_yoffset;
-    int logo_height;
-    int logo_width;
-    int pos_time_x;
-    int pos_time_y;
-    int time_transparency;
-    int time_rotation;
-    int pos_user_text_x;
-    int pos_user_text_y;
-    int user_text_transparency;
-    int user_text_rotation;
-    int pos_uptime_x;
-    int pos_uptime_y;
-    int uptime_transparency;
-    int uptime_rotation;
-    int pos_logo_x;
-    int pos_logo_y;
-    int logo_transparency;
-    int logo_rotation;
     int start_delay;
     bool enabled;
-    bool time_enabled;
-    bool user_text_enabled;
-    bool uptime_enabled;
-    bool logo_enabled;
     bool font_stroke_enabled;
     const char *font_path;
     const char *time_format;
     const char *uptime_format;
-    const char *user_text_format;
-    const char *logo_path;
     unsigned int font_color;
     unsigned int font_stroke_color;
-    _regions regions;
     _stream_stats stats;
     std::atomic<int> thread_signal;
 };
@@ -366,10 +338,42 @@ public:
     _motion motion{};
     _websocket websocket{};
 
-    // new osdItems
-    // std::vector<OsdConfigItem> osdConfigItems{};
     int numOsdConfigItems{0};
     OsdConfigItem *osdConfigItems;
+    
+    void deleteOsdConfigItem(int indexToDelete)
+    {
+        if (indexToDelete < 0 || indexToDelete >= numOsdConfigItems)
+            return;
+
+        int n = 0;
+
+        std::unique_lock lck(mutex_main);
+        OsdConfigItem* newItems = new OsdConfigItem[numOsdConfigItems - 1];
+
+        for (int i = 0; i < numOsdConfigItems; ++i) {
+            if (i!=indexToDelete)
+                newItems[n++].assign_or_update(&osdConfigItems[i]);
+        }
+
+        delete[] osdConfigItems;
+        osdConfigItems = newItems;
+        numOsdConfigItems = n;
+    }
+
+    void addOsdConfigItem(OsdConfigItem *newItem) {
+        OsdConfigItem* newItems = new OsdConfigItem[numOsdConfigItems + 1];
+
+        for (int i = 0; i < numOsdConfigItems; ++i) {
+            newItems[i].assign_or_update(&osdConfigItems[i]);
+        }
+
+        newItems[numOsdConfigItems].assign_or_update(newItem);
+
+        delete[] osdConfigItems;
+        osdConfigItems = newItems;
+        numOsdConfigItems++;
+    }
 
     template <typename T>
     T get(const std::string &name)
@@ -409,7 +413,6 @@ public:
     template <typename T>
     bool set(const std::string &name, T value, bool noSave = false)
     {
-        // std::cout << name << "=" << value << std::endl;
         std::vector<ConfigItem<T>> *items = nullptr;
         if constexpr (std::is_same_v<T, bool>)
         {

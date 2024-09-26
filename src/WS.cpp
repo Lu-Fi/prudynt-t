@@ -6,7 +6,6 @@
 #include <variant>
 #include "Config.hpp"
 #include "libwebsockets.h"
-#include <imp/imp_osd.h>
 #include <imp/imp_isp.h>
 #include <imp/imp_audio.h>
 #include "OSD.hpp"
@@ -312,80 +311,25 @@ static const char *const stream2_keys[] = {
 /* OSD */
 enum
 {
-    PNT_OSD_TIME_TRANSPARENCY = 1,
-    PNT_OSD_USER_TEXT_TRANSPARENCY,
-    PNT_OSD_UPTIME_TRANSPARENCY,
-    PNT_OSD_LOGO_TRANSPARENCY,
-
-    PNT_OSD_FONT_SIZE,
+    PNT_OSD_FONT_SIZE = 1,
     PNT_OSD_FONT_STROKE_SIZE,
-    PNT_OSD_LOGO_HEIGHT,
-    PNT_OSD_LOGO_WIDTH,
-    PNT_OSD_POS_TIME_X,
-    PNT_OSD_POS_TIME_Y,
-    PNT_OSD_TIME_ROTATION,
-    PNT_OSD_POS_USER_TEXT_X,
-    PNT_OSD_POS_USER_TEXT_Y,
-    PNT_OSD_USER_TEXT_ROTATION,
-    PNT_OSD_POS_UPTIME_X,
-    PNT_OSD_POS_UPTIME_Y,
-    PNT_OSD_UPTIME_ROTATION,
-
-    PNT_OSD_POS_LOGO_X,
-    PNT_OSD_POS_LOGO_Y,
-    PNT_OSD_LOGO_ROTATION,
-
     PNT_OSD_ENABLED,
-    PNT_OSD_TIME_ENABLED,
-    PNT_OSD_USER_TEXT_ENABLED,
-    PNT_OSD_UPTIME_ENABLED,
-    PNT_OSD_LOGO_ENABLED,
     PNT_OSD_FONT_STROKE_ENABLED,
-
     PNT_OSD_FONT_PATH,
     PNT_OSD_TIME_FORMAT,
     PNT_OSD_UPTIME_FORMAT,
-    PNT_OSD_USER_TEXT_FORMAT,
-    PNT_OSD_LOGO_PATH,
     PNT_OSD_FONT_COLOR,
     PNT_OSD_FONT_STROKE_COLOR,
 };
 
 static const char *const osd_keys[] = {
-    "time_transparency",
-    "user_text_transparency",
-    "uptime_transparency",
-    "logo_transparency",
-
     "font_size",
     "font_stroke_size",
-    "logo_height",
-    "logo_width",
-    "pos_time_x",
-    "pos_time_y",
-    "time_rotation",
-    "pos_user_text_x",
-    "pos_user_text_y",
-    "user_text_rotation",
-    "pos_uptime_x",
-    "pos_uptime_y",
-    "uptime_rotation",
-
-    "pos_logo_x",
-    "pos_logo_y",
-    "logo_rotation",
-
     "enabled",
-    "time_enabled",
-    "user_text_enabled",
-    "uptime_enabled",
-    "logo_enabled",
     "font_stroke_enabled",
     "font_path",
     "time_format",
     "uptime_format",
-    "user_text_format",
-    "logo_path",
     "font_color",
     "font_stroke_color",
 };
@@ -401,7 +345,7 @@ enum
     PNT_OSD_V2_ROTATION,
     PNT_OSD_V2_TEXT,
     PNT_OSD_V2_FILE,
-    PNT_OSD_V2_INDEX
+    PNT_OSD_V2_ID
 };
 
 static const char *const osd_v2_keys[] = {
@@ -413,7 +357,7 @@ static const char *const osd_v2_keys[] = {
     "[].rotation",
     "[].text",
     "[].file",
-    "[].index"};
+    "[].id"};
 
 /* MOTION */
 enum
@@ -569,7 +513,7 @@ int restart_threads_by_signal(int &flag)
             global_restart_osd = true;
             flag &= ~PNT_FLAG_RESTART_OSD;
             ret = 1;
-        }        
+        }
     }
     else
     {
@@ -1471,60 +1415,7 @@ signed char WS::osd_callback(struct lejp_ctx *ctx, char reason)
 
         u_ctx->flag |= PNT_FLAG_SEPARATOR;
 
-        if (ctx->path_match >= PNT_OSD_TIME_TRANSPARENCY &&
-            ctx->path_match <= PNT_OSD_LOGO_TRANSPARENCY)
-        {
-            int hnd;
-            if (reason == LEJPCB_VAL_NUM_INT)
-            {
-                if (cfg->set<int>(u_ctx->path, atoi(ctx->buf)))
-                {
-
-                    _regions regions;
-
-                    if (u_ctx->value == 0)
-                    {
-                        regions = cfg->stream0.osd.regions;
-                    }
-                    else if (u_ctx->value == 1)
-                    {
-                        regions = cfg->stream1.osd.regions;
-                    }
-
-                    switch (ctx->path_match)
-                    {
-                    case PNT_OSD_TIME_TRANSPARENCY:
-                        hnd = regions.time;
-                        break;
-                    case PNT_OSD_USER_TEXT_TRANSPARENCY:
-                        hnd = regions.user;
-                        break;
-                    case PNT_OSD_UPTIME_TRANSPARENCY:
-                        hnd = regions.uptime;
-                        break;
-                    case PNT_OSD_LOGO_TRANSPARENCY:
-                        hnd = regions.logo;
-                        ;
-                        break;
-                    }
-
-                    IMPOSDGrpRgnAttr grpRgnAttr;
-                    int ret = IMP_OSD_GetGrpRgnAttr(hnd, u_ctx->value, &grpRgnAttr);
-
-                    if (ret == 0)
-                    {
-                        memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
-                        grpRgnAttr.show = 1;
-                        grpRgnAttr.gAlphaEn = 1;
-                        grpRgnAttr.fgAlhpa = cfg->get<int>(u_ctx->path);
-                        IMP_OSD_SetGrpRgnAttr(hnd, u_ctx->value, &grpRgnAttr);
-                    }
-                };
-            }
-            add_json_num(u_ctx->message, cfg->get<int>(u_ctx->path));
-        }
-        // integer
-        else if (ctx->path_match >= PNT_OSD_FONT_SIZE && ctx->path_match <= PNT_OSD_UPTIME_ROTATION)
+        if (ctx->path_match >= PNT_OSD_FONT_SIZE && ctx->path_match <= PNT_OSD_FONT_STROKE_SIZE)
         {
             if (reason == LEJPCB_VAL_NUM_INT)
             {
@@ -1546,7 +1437,7 @@ signed char WS::osd_callback(struct lejp_ctx *ctx, char reason)
             add_json_bool(u_ctx->message, cfg->get<bool>(u_ctx->path));
         }
         // const char *
-        else if (ctx->path_match >= PNT_OSD_FONT_PATH && ctx->path_match <= PNT_OSD_LOGO_PATH)
+        else if (ctx->path_match >= PNT_OSD_FONT_PATH && ctx->path_match <= PNT_OSD_UPTIME_FORMAT)
         {
             if (reason == LEJPCB_VAL_STR_END)
             {
@@ -1569,64 +1460,7 @@ signed char WS::osd_callback(struct lejp_ctx *ctx, char reason)
         }
         else
         {
-            switch (ctx->path_match)
-            {
-            case PNT_OSD_POS_LOGO_X:
-                if (reason == LEJPCB_VAL_NUM_INT)
-                {
-                    cfg->set<int>(u_ctx->path, atoi(ctx->buf));
-                    IMPOSDRgnAttr rgnAttr;
-                    memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-                    if (IMP_OSD_GetRgnAttr(3, &rgnAttr) == 0)
-                    {
-                        if (u_ctx->value == 0)
-                        {
-                            OSD::set_pos(&rgnAttr, cfg->stream0.osd.pos_logo_x,
-                                         cfg->stream0.osd.pos_logo_y, 0, 0, cfg->stream0.width, cfg->stream0.height);
-                        }
-                        else if (u_ctx->value == 1)
-                        {
-                            OSD::set_pos(&rgnAttr, cfg->stream1.osd.pos_logo_x,
-                                         cfg->stream1.osd.pos_logo_y, 0, 0, cfg->stream1.width, cfg->stream1.height);
-                        }
-                        IMP_OSD_SetRgnAttr(3, &rgnAttr);
-                    }
-                }
-                add_json_num(u_ctx->message, cfg->get<int>(u_ctx->path));
-                break;
-            case PNT_OSD_POS_LOGO_Y:
-                if (reason == LEJPCB_VAL_NUM_INT)
-                {
-                    cfg->set<int>(u_ctx->path, atoi(ctx->buf));
-                    IMPOSDRgnAttr rgnAttr;
-                    memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
-                    if (IMP_OSD_GetRgnAttr(3, &rgnAttr) == 0)
-                    {
-                        if (u_ctx->value == 0)
-                        {
-                            OSD::set_pos(&rgnAttr, cfg->stream0.osd.pos_logo_y,
-                                         cfg->stream0.osd.pos_logo_y, 0, 0, cfg->stream0.width, cfg->stream0.height);
-                        }
-                        else if (u_ctx->value == 1)
-                        {
-                            OSD::set_pos(&rgnAttr, cfg->stream1.osd.pos_logo_y,
-                                         cfg->stream1.osd.pos_logo_y, 0, 0, cfg->stream1.width, cfg->stream1.height);
-                        }
-                        IMP_OSD_SetRgnAttr(3, &rgnAttr);
-                    }
-                }
-                add_json_num(u_ctx->message, cfg->get<int>(u_ctx->path));
-                break;
-            case PNT_OSD_LOGO_ROTATION:
-                // encoder restart required
-                if (reason == LEJPCB_VAL_NUM_INT)
-                    cfg->set<int>(u_ctx->path, atoi(ctx->buf));
-                add_json_num(u_ctx->message, cfg->get<int>(u_ctx->path));
-                break;
-            default:
-                u_ctx->flag &= ~PNT_FLAG_SEPARATOR;
-                break;
-            };
+            u_ctx->flag &= ~PNT_FLAG_SEPARATOR;
         }
     }
     else if (reason == LEJPCB_OBJECT_END)
@@ -1954,8 +1788,6 @@ signed char WS::osd_v2_callback(struct lejp_ctx *ctx, char reason)
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
     u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
 
-    LOG_DEBUG("osd_v2_callback " << reason);
-
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
         // OSD V2 Values
@@ -1973,19 +1805,6 @@ signed char WS::osd_v2_callback(struct lejp_ctx *ctx, char reason)
     }
     else if (reason == LEJPCB_OBJECT_END)
     {
-
-        if (u_ctx->obj_ptr)
-        {
-            OsdConfigItem *osdConfigItems;
-            osdConfigItems = static_cast<OsdConfigItem *>(u_ctx->obj_ptr);
-
-            LOG_DEBUG("osdConfigItems : " << u_ctx->midx);
-            for (int i = 0; i < u_ctx->midx; i++)
-            {
-                LOG_DEBUG(i << ":{" << "streams:[" << (osdConfigItems[i].streams[0] ? "0" : "") << "," << (osdConfigItems[i].streams[1] ? "1" : "") << "], " << "posX:" << osdConfigItems[i].posX << ", " << "posY:" << osdConfigItems[i].posY << ", " << "transparency:" << osdConfigItems[i].transparency << ", " << "rotation:" << osdConfigItems[i].rotation << ", " << "text:" << (osdConfigItems[i].text ? osdConfigItems[i].text : "") << ", " << "file:" << (osdConfigItems[i].file ? osdConfigItems[i].file : "") << "}");
-            }
-        }
-
         u_ctx->flag |= PNT_FLAG_SEPARATOR;
         u_ctx->message.append("}");
         lejp_parser_pop(ctx);
@@ -1998,7 +1817,7 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
     u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
-    OsdConfigItem *osdConfigItems;
+    OsdConfigItem *osdConfigItem;
 
     size_t len = strlen(ctx->path);
     char *path = new char[len + 1];
@@ -2008,8 +1827,6 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
         path[len - 3] = '\0';
     }
 
-    LOG_DEBUG("osd_v2_item_callback " << reason);
-
     if (((reason & LEJP_FLAG_CB_IS_VALUE) && (reason == LEJPCB_VAL_NULL)) ||
         ((reason == LEJPCB_ARRAY_END) && (u_ctx->flag & PNT_FLAG_ARRAY) && !(u_ctx->flag & PNT_FLAG_VALUE_ARRAY)))
     {
@@ -2017,13 +1834,13 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
         u_ctx->message.append("[");
         for (int i = 0; i < cfg->numOsdConfigItems; i++)
         {
-
-            LOG_DEBUG("osd_v2_item_callback item " << i);
-
             if ((u_ctx->flag & PNT_FLAG_SEPARATOR))
                 u_ctx->message.append(",");
 
-            int h = 0; 
+            append_session_msg(
+                u_ctx->message, "{\"id\":%d", i+1);
+                
+            int h = 0;
             char tmpStreams[4]{0, 0, 0, 0};
             if (cfg->osdConfigItems[i].streams[0])
                 tmpStreams[h++] = '0';
@@ -2034,11 +1851,8 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
             if (cfg->osdConfigItems[i].streams[1])
                 tmpStreams[h++] = '1';
 
-
-            LOG_DEBUG("osd_v2_item_callback stream " << tmpStreams);
-
             append_session_msg(
-                u_ctx->message, "{\"streams\":[%s],\"posX\":%d,\"posY\":%d,\"transparency\":%d,\"rotation\":%d", tmpStreams,
+                u_ctx->message, ",\"streams\":[%s],\"posX\":%d,\"posY\":%d,\"transparency\":%d,\"rotation\":%d", tmpStreams,
                 cfg->osdConfigItems[i].posX, cfg->osdConfigItems[i].posY, cfg->osdConfigItems[i].transparency, cfg->osdConfigItems[i].rotation);
 
             if (cfg->osdConfigItems[i].text)
@@ -2050,7 +1864,7 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
             {
                 append_session_msg(
                     u_ctx->message, ",\"file\":\"%s:%d:%d\"", cfg->osdConfigItems[i].file, cfg->osdConfigItems[i].width, cfg->osdConfigItems[i].height);
-            }            
+            }
             else if (cfg->osdConfigItems[i].file)
             {
                 append_session_msg(
@@ -2070,22 +1884,17 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
         // parse osd enty(s)
         if (!u_ctx->obj_ptr)
         {
-            u_ctx->obj_ptr = new OsdConfigItem[32];
+            u_ctx->obj_ptr = new OsdConfigItem;
             u_ctx->midx = 0;
         }
         else
         {
-            osdConfigItems = static_cast<OsdConfigItem *>(u_ctx->obj_ptr);
+            osdConfigItem = static_cast<OsdConfigItem *>(u_ctx->obj_ptr);
         }
 
         switch (reason)
         {
         case LEJPCB_ARRAY_START:
-            LOG_DEBUG("osd_v2_item_callback [ ");
-            // not first, we need a separator
-            if (u_ctx->flag & PNT_FLAG_SEPARATOR)
-                u_ctx->message.append(",");
-
             // if it's an initially opened or entry subarray (streams)
             if (!(u_ctx->flag & PNT_FLAG_ARRAY) || ((u_ctx->flag & PNT_FLAG_ARRAY) && (u_ctx->flag & PNT_FLAG_ENTRY)))
             {
@@ -2093,33 +1902,19 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
                     u_ctx->flag |= PNT_FLAG_VALUE_ARRAY;
                 else
                     u_ctx->flag |= PNT_FLAG_ARRAY;
-
-                u_ctx->message.append("[");
             }
             break;
 
         case LEJPCB_OBJECT_START:
-            LOG_DEBUG("osd_v2_item_callback { ");
             if (u_ctx->flag & PNT_FLAG_ARRAY)
             {
                 u_ctx->flag &= ~PNT_FLAG_VALUE_SEPARATOR;
                 u_ctx->flag |= PNT_FLAG_ENTRY;
-
-                if (u_ctx->midx)
-                    u_ctx->message.append(",");
-
-                u_ctx->message.append("{");
                 u_ctx->vidx = 0;
             }
             break;
 
         case LEJPCB_PAIR_NAME:
-            LOG_DEBUG("osd_v2_item_callback PAIR MATCH " << ctx->path_match);
-            if (ctx->path_match)
-            {
-                append_session_msg(
-                    u_ctx->message, "%s\"%s\":", ((u_ctx->flag & PNT_FLAG_VALUE_SEPARATOR) ? "," : ""), path);
-            }
             break;
 
         case LEJPCB_VAL_NUM_INT:
@@ -2129,32 +1924,25 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
                 int v = atoi(ctx->buf);
                 if (v >= 0 && v <= 1)
                 {
-                    if (u_ctx->vidx)
-                        u_ctx->message.append(",");
-
-                    u_ctx->message.append(ctx->buf);
-                    osdConfigItems[u_ctx->midx].streams[v] = true;
+                    osdConfigItem->streams[v] = true;
                 }
-
                 u_ctx->vidx++;
             }
 
             if (ctx->path_match >= PNT_OSD_V2_POSX && ctx->path_match <= PNT_OSD_V2_ROTATION)
             {
-                u_ctx->message.append(ctx->buf);
-
                 int v = atoi(ctx->buf);
                 if (ctx->path_match == PNT_OSD_V2_POSX)
-                    osdConfigItems[u_ctx->midx].posX = v;
+                    osdConfigItem->posX = v;
                 if (ctx->path_match == PNT_OSD_V2_POSY)
-                    osdConfigItems[u_ctx->midx].posY = v;
+                    osdConfigItem->posY = v;
                 if (ctx->path_match == PNT_OSD_V2_TRANSPARENCY)
-                    osdConfigItems[u_ctx->midx].transparency = v;
+                    osdConfigItem->transparency = v;
                 if (ctx->path_match == PNT_OSD_V2_ROTATION)
-                    osdConfigItems[u_ctx->midx].rotation = v;
+                    osdConfigItem->rotation = v;
             }
 
-            if (ctx->path_match >= PNT_OSD_V2_INDEX)
+            if (ctx->path_match >= PNT_OSD_V2_ID)
             {
                 u_ctx->value = atoi(ctx->buf);
             }
@@ -2163,32 +1951,59 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
         case LEJPCB_VAL_STR_END:
             if (ctx->path_match >= PNT_OSD_V2_TEXT && ctx->path_match <= PNT_OSD_V2_FILE)
             {
-
-                add_json_str(u_ctx->message, ctx->buf);
-
                 if (ctx->path_match == PNT_OSD_V2_TEXT)
-                    osdConfigItems[u_ctx->midx].text = strdup(ctx->buf);
+                    osdConfigItem->text = strdup(ctx->buf);
                 if (ctx->path_match == PNT_OSD_V2_FILE)
-                    osdConfigItems[u_ctx->midx].file = strdup(ctx->buf);
+                    osdConfigItem->file = strdup(ctx->buf);
             }
-
             break;
 
         case LEJPCB_OBJECT_END:
-            LOG_DEBUG("osd_v2_item_callback } ");
-            // is roi array open ? if so, open entry array
             if (u_ctx->flag & PNT_FLAG_ARRAY)
             {
+                if(u_ctx->value) 
+                {
+                    if(u_ctx->value<=cfg->numOsdConfigItems)
+                    {
+                        // delete entry
+                        if (osdConfigItem->text == nullptr && osdConfigItem->file == nullptr)
+                        {
+                            cfg->deleteOsdConfigItem(u_ctx->value-1);
+                            u_ctx->flag |= PNT_FLAG_RESTART_OSD;
+                        }
+                        // update entry
+                        if ((osdConfigItem->text != nullptr || osdConfigItem->file != nullptr) && sizeof(osdConfigItem->streams))
+                        {
+                            cfg->osdConfigItems[u_ctx->value-1].assign_or_update(osdConfigItem);
+                            u_ctx->flag |= PNT_FLAG_RESTART_OSD;
+                        }
+                    }                
+                }
+                else
+                {
+                    // add entry
+                    if ((osdConfigItem->text != nullptr || osdConfigItem->file != nullptr) && sizeof(osdConfigItem->streams))
+                    {
+                        cfg->addOsdConfigItem(osdConfigItem);
+                        u_ctx->flag |= PNT_FLAG_RESTART_OSD;                      
+                    }                     
+                }
+
+                if(u_ctx->flag & PNT_FLAG_RESTART_OSD)
+                    restart_threads_by_signal(u_ctx->flag);
+
+                // cleanup item after processing
+                if(osdConfigItem) 
+                {
+                    delete osdConfigItem;
+                    u_ctx->obj_ptr = nullptr;
+                }
+                u_ctx->value = 0;
                 u_ctx->flag &= ~PNT_FLAG_ENTRY;
-                u_ctx->message.append("}");
-                u_ctx->midx++;
             }
             break;
 
         case LEJPCB_ARRAY_END:
-            LOG_DEBUG("osd_v2_item_callback ] ");
-            // roi entry closed
-            u_ctx->message.append("]");
             if ((u_ctx->flag & PNT_FLAG_VALUE_ARRAY))
             {
                 u_ctx->flag &= ~PNT_FLAG_VALUE_ARRAY;

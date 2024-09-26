@@ -1,6 +1,8 @@
 #ifndef OSD_hpp
 #define OSD_hpp
 
+#include <cmath>
+#include <vector>
 #include <imp/imp_osd.h>
 #include <imp/imp_encoder.h>
 #include <ifaddrs.h>
@@ -10,6 +12,7 @@
 #include "schrift.h"
 #include "Config.hpp"
 #include "Logger.hpp"
+#include "schrift.h"
 
 #if defined(PLATFORM_T31)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
@@ -65,24 +68,11 @@ struct OSDItem
     IMPOSDRgnAttrData *rgnAttrData;
 };
 
-/*
 struct Glyph
 {
     int width;
     int height;
-    std::vector<uint8_t> bitmap;
-    int advance;
-    int xmin;
-    int ymin;
-    SFT_Glyph glyph;
-};
-*/
-
-struct Glyph
-{
-    int width;
-    int height;
-    uint8_t* bitmap;  // Array für die Bitmap-Daten
+    uint8_t* bitmap;
     int advance;
     int xmin;
     int ymin;
@@ -91,8 +81,8 @@ struct Glyph
 
 struct GlyphEntry
 {
-    char character;  // Das Zeichen, zu dem die Glyphe gehört
-    Glyph glyph;     // Die Glyphen-Daten
+    char character;
+    Glyph glyph;
 };
 
 class OSD
@@ -123,8 +113,6 @@ private:
     Glyph* findGlyph(char character);
     void freeGlyphs();
     
-    //std::unordered_map<char, Glyph> glyphs;
-    
     SFT *sft;
     int load_font();
     int libschrift_init();
@@ -152,19 +140,12 @@ private:
     int osdGrp{};
     int encChn{};
 
-    char hostname[64];
-    char ip[INET_ADDRSTRLEN]{};
-
     uint16_t stream_width;
     uint16_t stream_height;
 
     time_t current;
     struct tm *ltime;
 
-    char timeFormatted[32];
-    char uptimeFormatted[32];
-    char fps[4];
-    char bps[8];
     uint8_t osd_items_to_update;
 };
 

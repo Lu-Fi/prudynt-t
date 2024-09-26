@@ -1,4 +1,3 @@
-#include <cmath>
 #include "OSD.hpp"
 
 #if defined(PLATFORM_T31)
@@ -11,71 +10,9 @@
 #define picHeight uHeight
 #endif
 
-#include <vector>
-
-#include "schrift.h"
-/*
-int OSD::renderGlyph(const char *characters)
+void OSD::addGlyph(char character, const Glyph &glyph)
 {
-
-    while (*characters)
-    {
-
-        SFT_LMetrics lmetrics;
-        SFT_GMetrics gmetrics;
-        SFT_Glyph glyph;
-        SFT_Image imageBuffer;
-
-        if (sft_lmetrics(sft, &lmetrics) == 0 && sft_lookup(sft, *characters, &glyph) == 0)
-        {
-            if (sft_gmetrics(sft, glyph, &gmetrics) == 0)
-            {
-                imageBuffer.width = gmetrics.minWidth;
-                imageBuffer.height = gmetrics.minHeight;
-                imageBuffer.pixels = (uint8_t *)malloc(imageBuffer.width * imageBuffer.height);
-
-                if (sft_render(sft, glyph, imageBuffer) == 0)
-                {
-                    Glyph g;
-                    g.width = imageBuffer.width;
-                    g.height = imageBuffer.height;
-                    g.advance = gmetrics.advanceWidth;
-                    g.xmin = gmetrics.leftSideBearing;
-                    g.ymin = gmetrics.yOffset;
-                    g.glyph = glyph;
-
-                    g.bitmap.resize(g.width * g.height * 4);
-                    for (int y = 0; y < g.height; ++y)
-                    {
-                        for (int x = 0; x < g.width; ++x)
-                        {
-                            int pixelIndex = y * g.width + x;
-                            uint8_t alpha = ((uint8_t *)imageBuffer.pixels)[pixelIndex];
-                            if (alpha > 0)
-                            {
-                                g.bitmap[pixelIndex * 4] = BGRA_TEXT[0];
-                                g.bitmap[pixelIndex * 4 + 1] = BGRA_TEXT[1];
-                                g.bitmap[pixelIndex * 4 + 2] = BGRA_TEXT[2];
-                                g.bitmap[pixelIndex * 4 + 3] = alpha;
-                            }
-                        }
-                    }
-
-                    glyphs[*characters] = g;
-                }
-                free(imageBuffer.pixels);
-            }
-        }
-        ++characters;
-    }
-
-    return 0;
-}
-*/
-
-void OSD::addGlyph(char character, const Glyph& glyph)
-{
-    GlyphEntry* newGlyphs = new GlyphEntry[glyphCount + 1];
+    GlyphEntry *newGlyphs = new GlyphEntry[glyphCount + 1];
     for (int i = 0; i < glyphCount; ++i)
     {
         newGlyphs[i] = glyphs[i];
@@ -88,7 +25,7 @@ void OSD::addGlyph(char character, const Glyph& glyph)
     glyphs = newGlyphs;
 }
 
-Glyph* OSD::findGlyph(char character)
+Glyph *OSD::findGlyph(char character)
 {
     for (int i = 0; i < glyphCount; ++i)
     {
@@ -156,12 +93,12 @@ int OSD::renderGlyph(const char *characters)
                                 g.bitmap[pixelIndex * 4] = 0;
                                 g.bitmap[pixelIndex * 4 + 1] = 0;
                                 g.bitmap[pixelIndex * 4 + 2] = 0;
-                                g.bitmap[pixelIndex * 4 + 3] = alpha;                                
+                                g.bitmap[pixelIndex * 4 + 3] = alpha;
                             }
                         }
                     }
 
-                    addGlyph(*characters, g);  // Neue Glyphe hinzufügen
+                    addGlyph(*characters, g); // Neue Glyphe hinzufügen
                 }
                 free(imageBuffer.pixels);
             }
@@ -207,62 +144,29 @@ void OSD::drawOutline(uint8_t *image, const Glyph &g, int x, int y, int outlineS
         }
     }
 }
-/*
-void OSD::drawOutline(uint8_t *image, const Glyph &g, int x, int y, int outlineSize, int WIDTH, int HEIGHT)
-{
-    for (int j = -outlineSize; j <= outlineSize; ++j)
-    {
-        for (int i = -outlineSize; i <= outlineSize; ++i)
-        {
-            if (abs(i) + abs(j) <= outlineSize)
-            { // Use Manhattan distance
-                for (int h = 0; h < g.height; ++h)
-                {
-                    for (int w = 0; w < g.width; ++w)
-                    {
-                        int srcIndex = (h * g.width + w) * 4;
-                        if (g.bitmap[srcIndex + 3] > 0)
-                        { // Check alpha value
-                            setPixel(image, x + w + i, y + h + j, BGRA_STROKE, WIDTH, HEIGHT);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-*/
+
 int OSD::drawText(uint8_t *image, const char *text, int WIDTH, int HEIGHT, int outlineSize)
 {
     int penX = 1;
     int penY = 1;
 
-    // Draw text and outline
     while (*text)
     {
-        /*
-        auto it = glyphs.find(*text);
-        if (it != glyphs.end())
-        {
-            const Glyph &g = it->second;
-        */
-        Glyph* g = findGlyph(*text);  // Glyphe suchen
-        if (g != nullptr)  // Wenn Glyphe gefunden wurde
+        Glyph *g = findGlyph(*text);
+        if (g != nullptr)
         {
             int x = penX + g->xmin + outlineSize;
             int y = penY + (sft->yScale + g->ymin);
 
-            // Draw the outline
             drawOutline(image, *g, x, y, outlineSize, WIDTH, HEIGHT);
 
-            // Draw the actual text
             for (int j = 0; j < g->height; ++j)
             {
                 for (int i = 0; i < g->width; ++i)
                 {
                     int srcIndex = (j * g->width + i) * 4;
                     if (g->bitmap[srcIndex + 3] > 0)
-                    { // Check alpha value
+                    {
                         setPixel(image, x + i, y + j, &g->bitmap[srcIndex], WIDTH, HEIGHT);
                     }
                 }
@@ -283,14 +187,8 @@ int OSD::calculateTextSize(const char *text, uint16_t &width, uint16_t &height, 
 
     while (*text)
     {
-        /*
-        auto it = glyphs.find(*text);
-        if (it != glyphs.end())
-        {
-            const Glyph &g = it->second;
-        */
-        Glyph* g = findGlyph(*text);  // Glyphe suchen
-        if (g != nullptr)  // Wenn Glyphe gefunden wurde
+        Glyph *g = findGlyph(*text);
+        if (g != nullptr)
         {
             width += g->advance + (outlineSize * 2);
             if (g->height > height)
@@ -343,7 +241,6 @@ int OSD::libschrift_init()
 
     size_t bytesRead = fread(fontData, 1, fileSize, fontFile);
     fclose(fontFile);
-    LOG_DEBUG(bytesRead);
 
     if (bytesRead != (size_t)fileSize)
     {
@@ -382,7 +279,6 @@ int OSD::libschrift_init()
 
 void OSD::set_text(OSDItem *osdItem, IMPOSDRgnAttr *rgnAttr, const char *text, int posX, int posY, int angle)
 {
-
     // size and stroke
     uint8_t stroke_width = osd.font_stroke;
     uint16_t item_width = 0;
@@ -762,12 +658,14 @@ bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
 
     if (strstr(osdItem->osdConfigItem.text, "%hostname") != nullptr)
     {
-        gethostname(hostname, 64);
+        char hostname[64];
+        gethostname(hostname, sizeof(hostname));
         replacestr(new_text, "%hostname", hostname);
     }
 
     if (strstr(osdItem->osdConfigItem.text, "%ipaddress") != nullptr)
     {
+        char ip[INET_ADDRSTRLEN]{};
         getIp(ip);
         replacestr(new_text, "%ipaddress", ip);
     }
@@ -788,6 +686,7 @@ bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
 
     if (strstr(osdItem->osdConfigItem.text, "%uptime") != nullptr)
     {
+        char uptimeFormatted[32];
         unsigned long currentUptime = getSystemUptime();
         unsigned long days = currentUptime / 86400;
         unsigned long hours = (currentUptime % 86400) / 3600;
@@ -799,6 +698,7 @@ bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
 
     if (strstr(osdItem->osdConfigItem.text, "%datetime") != nullptr)
     {
+        char timeFormatted[32];
         strftime(timeFormatted, sizeof(timeFormatted), osd.time_format, ltime);
         replacestr(new_text, "%datetime", timeFormatted);
     }
@@ -871,6 +771,7 @@ void OSD::init()
     if (libschrift_init() != 0)
     {
         LOG_DEBUG("libschrift init failed.");
+        return;
     }
 
     // for (OsdConfigItem osdConfigItem : cfg->osdConfigItems)
@@ -883,14 +784,17 @@ void OSD::init()
         {
             OSDItemV2 *osdItem = new OSDItemV2(osdConfigItem, osdGrp);
 
-            LOG_DEBUG("osdConfigItem " << i << " {" << "'posX':" << osdItem->osdConfigItem.posX << ", " << "'posY':" << osdItem->osdConfigItem.posY << ", " << "'height':" << osdItem->osdConfigItem.height << ", " << "'width':" << osdItem->osdConfigItem.width << ", " << "'text':'" << (osdItem->osdConfigItem.text ? osdItem->osdConfigItem.text : "") << "', " << "'file':'" << (osdItem->osdConfigItem.file ? osdItem->osdConfigItem.file : "") << "'}");
-
-            LOG_DEBUG("test" << (osdItem->osdConfigItem.text == NULL));
+            LOG_DDEBUG("osdConfigItem " << i << " {" << 
+                "'posX':" << osdItem->osdConfigItem.posX << ", " << 
+                "'posY':" << osdItem->osdConfigItem.posY << ", " << 
+                "'height':" << osdItem->osdConfigItem.height << ", " << 
+                "'width':" << osdItem->osdConfigItem.width << ", " << 
+                "'text':'" << (osdItem->osdConfigItem.text ? osdItem->osdConfigItem.text : "") << "', " << 
+                "'file':'" << (osdItem->osdConfigItem.file ? osdItem->osdConfigItem.file : "") << "'}");
 
             // OSD Image
             if (osdItem->osdConfigItem.width && osdItem->osdConfigItem.height)
             {
-                LOG_DEBUG("OSDImage");
                 IMPOSDRgnAttr rgnAttr;
                 memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
                 IMP_OSD_GetRgnAttr(osdItem->imp_rgn, &rgnAttr);
@@ -899,7 +803,7 @@ void OSD::init()
                 osdItem->data = loadBGRAImage(osdItem->osdConfigItem.file, imageSize);
 
                 // Verify OSD logo size vs dimensions
-                if ((osd.logo_width * osd.logo_height * 4) == imageSize)
+                if ((osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4) == imageSize)
                 {
                     rgnAttr.data.picData.pData = osdItem->data;
 
@@ -919,18 +823,17 @@ void OSD::init()
                 }
                 else
                 {
-
-                    LOG_ERROR("Invalid OSD logo dimensions. Imagesize=" << imageSize << ", " << osdItem->osdConfigItem.width << "*" << osdItem->osdConfigItem.height << "*4=" << (osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4));
+                    LOG_ERROR("Invalid OSD logo dimensions. " << 
+                        "Imagesize=" << imageSize << ", " << osdItem->osdConfigItem.width << "*" << 
+                        osdItem->osdConfigItem.height << "*4=" << (osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4));
                 }
                 IMP_OSD_SetRgnAttr(osdItem->imp_rgn, &rgnAttr);
             }
             // OSD Text
             else if (osdItem->osdConfigItem.file != nullptr)
             {
-                LOG_DEBUG("OSDFile");
                 if (OSDTextFromFile(osdItem))
                 {
-                    LOG_DEBUG("OSDFile " << (osdItem->text ? osdItem->text : "NULL"));
                     set_text2(osdItem, nullptr, osdItem->text,
                               osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
@@ -938,17 +841,11 @@ void OSD::init()
             // OSD Text
             else if (osdItem->osdConfigItem.text != nullptr)
             {
-                LOG_DEBUG("OSDText " << (osdItem->text ? osdItem->text : "NULL"));
                 if (OSDTextPlaceholders(osdItem))
                 {
                     set_text2(osdItem, nullptr, osdItem->text,
                               osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
-            }
-
-            if (osdItem->text != NULL)
-            {
-                LOG_DEBUG("osdItem " << i << " {" << "'text':" << osdItem->text << ", " << "'length':" << strlen(osdItem->text) << ", " << "'imp_rgn':" << osdItem->imp_rgn << "'}");
             }
 
             if (osdItem->data)
@@ -1013,7 +910,7 @@ int OSD::exit()
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_DestroyGroup(" << osdGrp << ")");
 
     freeGlyphs();
-    
+
     return 0;
 }
 
@@ -1025,7 +922,6 @@ void OSD::updateDisplayEverySecond()
     // Check if we have moved to a new second
     if (ltime->tm_sec != last_updated_second)
     {
-
         osd_items_to_update = osdItems.size();
         last_updated_second = ltime->tm_sec;
     }
@@ -1042,7 +938,6 @@ void OSD::updateDisplayEverySecond()
             {
                 if (OSDTextPlaceholders(osdItem))
                 {
-                    LOG_DEBUG("OSDTextPlaceholders updated: " << osdItem->osdConfigItem.text << " == " << osdItem->text);
                     set_text2(osdItem, nullptr, osdItem->text,
                               osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }
@@ -1051,7 +946,6 @@ void OSD::updateDisplayEverySecond()
             {
                 if (OSDTextFromFile(osdItem))
                 {
-                    LOG_DEBUG("OSDFile updated: " << osdItem->osdConfigItem.file << " == " << osdItem->text);
                     set_text2(osdItem, nullptr, osdItem->text,
                               osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
                 }

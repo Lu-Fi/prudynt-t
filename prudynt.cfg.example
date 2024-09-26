@@ -92,38 +92,12 @@ stream0: {
 		# font_stroke_enabled: true;  # Enable or disable a stroke (outline) for OSD text.
 		# font_stroke_size: 64;  # Size of the font stroke.
 		# font_stroke_color: 0xFF000000;  # Color of the font stroke in ARGB format.
-		# time_enabled: true;  # Enable or disable the time display in the OSD.
 		# time_format: "%F %T";  # Format string for displaying time.
-		# user_text_enabled: true;  # Enable or disable the display of custom user text.
-		# user_text_format: "%hostname";  # Custom text to display in the OSD.
-		# uptime_enabled: true;  # Enable or disable the display of system uptime.
 		# uptime_format: "Uptime: %02lu:%02lu:%02lu";  # Format string for displaying uptime.
-		# logo_enabled: true;  # Enable or disable the display of a logo image.
-		# logo_path: "/usr/share/images/thingino_logo_1.bgra";  # Path to the logo image file.
-		# logo_width: 100;  # Width of the logo image.
-		# logo_height: 30;  # Height of the logo image.
-		# logo_transparency: 255;  # Transparency (0-255) for the logo in the OSD.
-		# pos_time_x: 10;  # X position for the OSD time.
-		# pos_time_y: 10;  # Y position for the OSD time.
-		# pos_user_text_x: 900;  # X position for the user-defined text in the OSD.
-		# pos_user_text_y: 5;  # Y position for the user-defined text in the OSD.
-		# pos_uptime_x: 1600;  # X position for the uptime display in the OSD.
-		# pos_uptime_y: 5;  # Y position for the uptime display in the OSD.
-		# pos_logo_x: 1800;  # X position for the logo in the OSD.
-		# pos_logo_y: 1030;  # Y position for the logo in the OSD.
 		# font_stroke: 1;  # Stroke width for the font.
 		# font_xscale: 100;  # X scale for the font.
 		# font_yscale: 100;  # Y scale for the font.
 		# font_yoffset: 3;  # Y offset for the font.
-		# logo_rotation: 0;  # Rotation for the logo (0-360 degrees).
-		# time_rotation: 0;  # Rotation for the time display (0-360 degrees).
-		# time_transparency: 255;  # Transparency for the time display (0-255).
-		# uptime_rotation: 0;  # Rotation for the uptime display (0-360 degrees).
-		# uptime_transparency: 255;  # Transparency for the uptime display (0-255).
-		# user_text_rotation: 0;  # Rotation for the user text (0-360 degrees).
-		# user_text_transparency: 255;  # Transparency for the user text (0-255).
-		# pos_logo_x: 1800;  # X position for the logo.
-		# pos_logo_y: 1030;  # Y position for the logo.
 	};
 };
 
@@ -152,36 +126,12 @@ stream1: {
 		# font_stroke_enabled: true;  # Enable or disable a stroke (outline) for OSD text.
 		# font_stroke_size: 64;  # Size of the font stroke.
 		# font_stroke_color: 0xFF000000;  # Color of the font stroke in ARGB format.
-		# time_enabled: true;  # Enable or disable the time display in the OSD.
 		# time_format: "%F %T";  # Format string for displaying time.
-		# user_text_enabled: true;  # Enable or disable the display of custom user text.
-		# user_text_format: "%hostname";  # Custom text to display in the OSD.
-		# uptime_enabled: true;  # Enable or disable the display of system uptime.
 		# uptime_format: "Uptime: %02lu:%02lu:%02lu";  # Format string for displaying uptime.
-		# logo_enabled: true;  # Enable or disable the display of a logo image.
-		# logo_path: "/usr/share/images/thingino_logo_1.bgra";  # Path to the logo image file.
-		# logo_width: 100;  # Width of the logo image.
-		# logo_height: 30;  # Height of the logo image.
-		# logo_transparency: 255;  # Transparency (0-255) for the logo in the OSD.
-		# pos_time_x: 10;  # X position for the OSD time.
-		# pos_time_y: 10;  # Y position for the OSD time.
-		# pos_user_text_x: 900;  # X position for the user-defined text in the OSD.
-		# pos_user_text_y: 5;  # Y position for the user-defined text in the OSD.
-		# pos_uptime_x: 1600;  # X position for the uptime display in the OSD.
-		# pos_uptime_y: 5;  # Y position for the uptime display in the OSD.
-		# pos_logo_x: 1800;  # X position for the logo in the OSD.
-		# pos_logo_y: 1030;  # Y position for the logo in the OSD.
 		# font_stroke: 1;  # Stroke width for the font.
 		# font_xscale: 100;  # X scale for the font.
 		# font_yscale: 100;  # Y scale for the font.
 		# font_yoffset: 3;  # Y offset for the font.
-		# logo_rotation: 0;  # Rotation for the logo (0-360 degrees).
-		# time_rotation: 0;  # Rotation for the time display (0-360 degrees).
-		# time_transparency: 255;  # Transparency for the time display (0-255).
-		# uptime_rotation: 0;  # Rotation for the uptime display (0-360 degrees).
-		# uptime_transparency: 255;  # Transparency for the uptime display (0-255).
-		# user_text_rotation: 0;  # Rotation for the user text (0-360 degrees).
-		# user_text_transparency: 255;  # Transparency for the user text (0-255).
 	};
 };
 
