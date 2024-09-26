@@ -128,7 +128,7 @@ private:
 
     _osd &osd;
     int last_updated_second;
-    const char *parent;
+    
 
     std::vector<OSDItemV2 *> osdItems;
 

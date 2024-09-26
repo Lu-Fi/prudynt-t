@@ -460,6 +460,12 @@ struct user_ctx
     lws_sorted_usec_list_t sul; // lws Soft Timer
     struct snapshot_info snapshot;
     void *obj_ptr{nullptr};
+    user_ctx(const std::string& session_id, lws *wsi_handle)
+        : id(session_id), wsi(wsi_handle), root(), path(), value(0), flag(0),
+          region(), midx(0), vidx(0), post_data_size(0), rx_message(), tx_message(),
+          message(), sul(), snapshot()
+    {}  
+
 };
 
 std::string generateToken(int length)
@@ -2125,9 +2131,9 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
     char client_ip[128];
     lws_get_peer_simple(wsi, client_ip, sizeof(client_ip));
 
-    char *url_ptr;
-    int url_length;
-    int request_method;
+    char *url_ptr = nullptr;
+    int url_length = 0;
+    int request_method = 0;
 
     // security token ?token=
     char url_token[128]{0};
@@ -2359,11 +2365,10 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
             if (cfg->websocket.http_secured)
             {
                 LOG_DEBUG("Connection refused.");
-                if (lws_return_http_status(wsi,
-                                           HTTP_STATUS_FORBIDDEN, NULL) ||
-                    lws_http_transaction_completed(wsi))
-                    ;
-                return -1;
+                if (lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, NULL) ||
+                    lws_http_transaction_completed(wsi)) {
+                    return -1;
+                }
             }
         }
 
@@ -2535,7 +2540,6 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
 
 void WS::start()
 {
-    int opt;
     char *ip = NULL;
 
     // create websocket authentication token and write it into /run/

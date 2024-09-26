@@ -44,6 +44,4 @@ private:
         static signed char osd_v2_callback(struct lejp_ctx *ctx, char reason);
         static signed char osd_v2_item_callback(struct lejp_ctx *ctx, char reason);
 };
-
-static uint32_t global_session_id = 0;
 #endif

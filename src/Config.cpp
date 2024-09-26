@@ -39,7 +39,7 @@ bool validateInt50_150(const int &v)
 
 bool validateInt60(const int &v)
 {
-    return v >= 0 && v <= 60 || v == IMP_AUTO_VALUE;
+    return (v >= 0 && v <= 60) || v == IMP_AUTO_VALUE;
 }
 
 bool validateInt255(const int &v)
