@@ -784,8 +784,8 @@ void OSD::init()
             OSDItemV2 *osdItem = new OSDItemV2(osdConfigItem, osdGrp);
 
             LOG_DDEBUG("osdConfigItem " << i << " {" << 
-                "'posX':" << osdItem->osdConfigItem.posX << ", " << 
-                "'posY':" << osdItem->osdConfigItem.posY << ", " << 
+                "'posX':" << *osdItem->osdConfigItem.posX << ", " << 
+                "'posY':" << *osdItem->osdConfigItem.posY << ", " << 
                 "'height':" << osdItem->osdConfigItem.height << ", " << 
                 "'width':" << osdItem->osdConfigItem.width << ", " << 
                 "'text':'" << (osdItem->osdConfigItem.text ? osdItem->osdConfigItem.text : "") << "', " << 
@@ -809,16 +809,16 @@ void OSD::init()
                     // Logo rotation
                     uint16_t logo_width = osdItem->osdConfigItem.width;
                     uint16_t logo_height = osdItem->osdConfigItem.height;
-                    if (osdItem->osdConfigItem.rotation)
+                    if (*osdItem->osdConfigItem.rotation)
                     {
                         uint8_t *imageData = static_cast<uint8_t *>(rgnAttr.data.picData.pData);
                         rotateBGRAImage(imageData, logo_width,
-                                        logo_height, osdItem->osdConfigItem.rotation, false);
+                                        logo_height, *osdItem->osdConfigItem.rotation, false);
                         rgnAttr.data.picData.pData = imageData;
                     }
 
-                    set_pos(&rgnAttr, osdItem->osdConfigItem.posX,
-                            osdItem->osdConfigItem.posY, logo_width, logo_height, stream_width, stream_height);
+                    set_pos(&rgnAttr, *osdItem->osdConfigItem.posX,
+                            *osdItem->osdConfigItem.posY, logo_width, logo_height, stream_width, stream_height);
                 }
                 else
                 {
@@ -834,7 +834,7 @@ void OSD::init()
                 if (OSDTextFromFile(osdItem))
                 {
                     set_text2(osdItem, nullptr, osdItem->text,
-                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
+                              *osdItem->osdConfigItem.posX, *osdItem->osdConfigItem.posY, *osdItem->osdConfigItem.rotation);
                 }
             }
             // OSD Text
@@ -843,7 +843,7 @@ void OSD::init()
                 if (OSDTextPlaceholders(osdItem))
                 {
                     set_text2(osdItem, nullptr, osdItem->text,
-                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
+                              *osdItem->osdConfigItem.posX, *osdItem->osdConfigItem.posY, *osdItem->osdConfigItem.rotation);
                 }
             }
 
@@ -893,8 +893,8 @@ int OSD::exit()
     {
         if (osdItem)
         {
-            ret = IMP_OSD_ShowRgn(osdItem->imp_rgn, osdGrp, 0);
-            LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_ShowRgn(" << osdItem->imp_rgn << ", " << osdGrp << ", 0)");
+            //ret = IMP_OSD_ShowRgn(osdItem->imp_rgn, osdGrp, 0);
+            //LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_ShowRgn(" << osdItem->imp_rgn << ", " << osdGrp << ", 0)");
 
             ret = IMP_OSD_UnRegisterRgn(osdItem->imp_rgn, osdGrp);
             LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_UnRegisterRgn(" << osdItem->imp_rgn << ", " << osdGrp << ")");
@@ -938,7 +938,7 @@ void OSD::updateDisplayEverySecond()
                 if (OSDTextPlaceholders(osdItem))
                 {
                     set_text2(osdItem, nullptr, osdItem->text,
-                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
+                              *osdItem->osdConfigItem.posX, *osdItem->osdConfigItem.posY, *osdItem->osdConfigItem.rotation);
                 }
             }
             else if (osdItem->osdConfigItem.file)
@@ -946,7 +946,7 @@ void OSD::updateDisplayEverySecond()
                 if (OSDTextFromFile(osdItem))
                 {
                     set_text2(osdItem, nullptr, osdItem->text,
-                              osdItem->osdConfigItem.posX, osdItem->osdConfigItem.posY, osdItem->osdConfigItem.rotation);
+                              *osdItem->osdConfigItem.posX, *osdItem->osdConfigItem.posY, *osdItem->osdConfigItem.rotation);
                 }
             }
             osd_items_to_update--;
