@@ -15,7 +15,7 @@
 #define ENABLE_LOG_DEBUG
 
 // Some more debug output not usefull for users (Developer Debug)
-// #define DDEBUG
+#define DDEBUG
 
 // enable audio support
 #define AUDIO_SUPPORT
@@ -67,67 +67,179 @@ extern std::mutex mutex_main;
 
 struct OsdConfigItem
 {
-    bool streams[OSD_STREAMS];
-    int posX;
-    int posY;
+    bool *streams; //[OSD_STREAMS];
+    int *posX;
+    int *posY;
     int width;
     int height;
-    int transparency;
-    int rotation;
+    int *transparency;
+    int *rotation;
     char *text;
     char *file;
-    int flags;
+    char *name;
+    //int flags;
 
     OsdConfigItem()
-        : posX(0), posY(0), width(0), height(0),
-          transparency(255), rotation(0), text(nullptr), file(nullptr), flags(0)
+        : streams(nullptr), posX(nullptr), posY(nullptr), width(0), height(0),
+          transparency(nullptr), rotation(nullptr), text(nullptr), file(nullptr), name(nullptr)//, flags(0)
     {
+        /*
         for (int i = 0; i < OSD_STREAMS; ++i)
         {
             streams[i] = false;
         }
+        */
     };
 
     ~OsdConfigItem()
     {
+        delete[] streams;
+        delete posX;
+        delete posY;
+        delete transparency;
+        delete rotation;
         delete[] text;
         delete[] file;
+        delete[] name;
     }
 
     void assign_or_update(const OsdConfigItem *osdConfigItem)
     {
-        for (int i = 0; i < OSD_STREAMS; ++i)
+        if(osdConfigItem->streams != nullptr)
         {
-            streams[i] = osdConfigItem->streams[i];
+            if (streams != nullptr) 
+                delete[] streams;            
+
+            streams = new bool[OSD_STREAMS];
+            for (int i = 0; i < OSD_STREAMS; ++i)
+            {
+                streams[i] = osdConfigItem->streams[i];
+            }
+        }
+        else if(streams == nullptr)
+        {
+            streams = new bool[OSD_STREAMS];
         }
 
-        posX = osdConfigItem->posX;
-        posY = osdConfigItem->posY;
-        width = osdConfigItem->width;
-        height = osdConfigItem->height;
-        transparency = osdConfigItem->transparency;
-        rotation = osdConfigItem->rotation;
-
-        if (osdConfigItem->text)
+        if(osdConfigItem->posX != nullptr)
         {
-            delete[] text;
+            if (posX != nullptr) 
+                delete posX;
+
+            posX = new int;
+            *posX = *(osdConfigItem->posX);  
+        }
+        else if(posX == nullptr)
+        {
+            posX = new int{0};
+        }
+
+        if(osdConfigItem->posY != nullptr)
+        {
+            if (posY != nullptr) 
+                delete posY;
+
+            posY = new int;
+            *posY = *(osdConfigItem->posY);  
+        }
+        else if(posY == nullptr)
+        {
+            posY = new int{0};
+        }
+
+        if(osdConfigItem->transparency != nullptr)
+        {
+            if (transparency != nullptr) 
+                delete transparency;
+
+            transparency = new int;
+            *transparency = *(osdConfigItem->transparency);  
+        }
+        else if(transparency == nullptr)
+        {
+            transparency = new int{255};
+        }
+
+        if(osdConfigItem->rotation != nullptr)
+        {
+            if (rotation != nullptr) 
+                delete rotation;
+
+            rotation = new int;
+            *rotation = *(osdConfigItem->rotation);  
+        }
+        else if(rotation == nullptr)
+        {
+            rotation = new int{0};
+        }
+
+        if(osdConfigItem->text != nullptr)
+        {
+            if(text != nullptr)
+                delete[] text;
+            
             text = new char[strlen(osdConfigItem->text) + 1];
             strcpy(text, osdConfigItem->text);
         }
-        else
+
+        if(osdConfigItem->name != nullptr)
         {
-            text = nullptr;
+            if(name != nullptr) 
+                delete[] name;
+
+            name = new char[strlen(osdConfigItem->name) + 1];
+            strcpy(name, osdConfigItem->name);
         }
 
-        if (osdConfigItem->file)
+        if (osdConfigItem->file != nullptr) 
         {
-            delete[] file;
-            file = new char[strlen(osdConfigItem->file) + 1];
-            strcpy(file, osdConfigItem->file);
-        }
-        else
-        {
-            file = nullptr;
+            const char *delimiter = ":";
+            if (strchr(osdConfigItem->file, *delimiter))
+            {
+                if(file != nullptr) 
+                    delete[] file;
+
+                char *token;
+                char *tmpFile = strdup(osdConfigItem->file);
+
+                token = strtok_r(tmpFile, delimiter, &tmpFile);
+                if (token != nullptr)
+                {
+                    file = new char[strlen(token) + 1];
+                    strcpy(file, token);
+                }
+
+                if (strchr(tmpFile, *delimiter))
+                {
+                    token = strtok_r(nullptr, delimiter, &tmpFile);
+                    if (token != nullptr)
+                        width = atoi(token);
+                    else
+                        width = 0;
+                }
+
+                if (!strchr(tmpFile, *delimiter))
+                {
+                    token = strtok_r(nullptr, delimiter, &tmpFile);
+                    if (token != nullptr)
+                        height = atoi(token);
+                    else
+                        height = 0;
+                }
+
+                free(tmpFile);
+            }
+            else
+            {
+                if(file != nullptr) 
+                    delete[] file;
+                
+                file = new char[strlen(osdConfigItem->file) + 1];
+                strcpy(file, osdConfigItem->file);
+
+                width = osdConfigItem->width;
+                height = osdConfigItem->height;
+            }       
         }
     };
 };
@@ -348,7 +460,6 @@ public:
 
         int n = 0;
 
-        std::unique_lock lck(mutex_main);
         OsdConfigItem* newItems = new OsdConfigItem[numOsdConfigItems - 1];
 
         for (int i = 0; i < numOsdConfigItems; ++i) {
@@ -356,6 +467,7 @@ public:
                 newItems[n++].assign_or_update(&osdConfigItems[i]);
         }
 
+        std::unique_lock lck(mutex_main);
         delete[] osdConfigItems;
         osdConfigItems = newItems;
         numOsdConfigItems = n;
@@ -369,7 +481,8 @@ public:
         }
 
         newItems[numOsdConfigItems].assign_or_update(newItem);
-
+        
+        std::unique_lock lck(mutex_main);
         delete[] osdConfigItems;
         osdConfigItems = newItems;
         numOsdConfigItems++;

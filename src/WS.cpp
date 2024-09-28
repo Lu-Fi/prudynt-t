@@ -347,6 +347,7 @@ enum
     PNT_OSD_V2_POSY,
     PNT_OSD_V2_TRANSPARENCY,
     PNT_OSD_V2_ROTATION,
+    PNT_OSD_V2_NAME,
     PNT_OSD_V2_TEXT,
     PNT_OSD_V2_FILE,
     PNT_OSD_V2_ID
@@ -359,6 +360,7 @@ static const char *const osd_v2_keys[] = {
     "[].posy",
     "[].transparency",
     "[].rotation",
+    "[].name",    
     "[].text",
     "[].file",
     "[].id"};
@@ -1284,7 +1286,7 @@ signed char WS::stream_callback(struct lejp_ctx *ctx, char reason)
                 if (reason == LEJPCB_VAL_STR_END)
                     cfg->set<const char *>(u_ctx->path, strdup(ctx->buf));
                 add_json_str(u_ctx->message, cfg->get<const char *>(u_ctx->path));
-                break;
+                break;                
             case PNT_STREAM_STATS:
                 if (reason == LEJPCB_VAL_NULL)
                 {
@@ -1867,8 +1869,8 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
                 tmpStreams[h++] = '1';
 
             append_session_msg(
-                u_ctx->message, ",\"streams\":[%s],\"posX\":%d,\"posY\":%d,\"transparency\":%d,\"rotation\":%d", tmpStreams,
-                cfg->osdConfigItems[i].posX, cfg->osdConfigItems[i].posY, cfg->osdConfigItems[i].transparency, cfg->osdConfigItems[i].rotation);
+                u_ctx->message, ",\"name\":\"%s\",\"streams\":[%s],\"posX\":%d,\"posY\":%d,\"transparency\":%d,\"rotation\":%d", cfg->osdConfigItems[i].name, 
+                tmpStreams, *cfg->osdConfigItems[i].posX, *cfg->osdConfigItems[i].posY, *cfg->osdConfigItems[i].transparency, *cfg->osdConfigItems[i].rotation);
 
             if (cfg->osdConfigItems[i].text)
             {
@@ -1899,8 +1901,9 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
         // parse osd enty(s)
         if (!u_ctx->obj_ptr)
         {
-            u_ctx->obj_ptr = new OsdConfigItem;
             u_ctx->midx = 0;
+            u_ctx->obj_ptr = new OsdConfigItem;
+            osdConfigItem = static_cast<OsdConfigItem *>(u_ctx->obj_ptr);
         }
         else
         {
@@ -1937,6 +1940,12 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
             if (ctx->path_match == PNT_OSD_V2_STREAMS && u_ctx->flag & PNT_FLAG_VALUE_ARRAY)
             {
                 int v = atoi(ctx->buf);
+
+                if(osdConfigItem->streams == nullptr)
+                {
+                    osdConfigItem->streams = new bool[OSD_STREAMS];
+                }
+
                 if (v >= 0 && v <= 1)
                 {
                     osdConfigItem->streams[v] = true;
@@ -1947,14 +1956,26 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
             if (ctx->path_match >= PNT_OSD_V2_POSX && ctx->path_match <= PNT_OSD_V2_ROTATION)
             {
                 int v = atoi(ctx->buf);
-                if (ctx->path_match == PNT_OSD_V2_POSX)
-                    osdConfigItem->posX = v;
-                if (ctx->path_match == PNT_OSD_V2_POSY)
-                    osdConfigItem->posY = v;
-                if (ctx->path_match == PNT_OSD_V2_TRANSPARENCY)
-                    osdConfigItem->transparency = v;
-                if (ctx->path_match == PNT_OSD_V2_ROTATION)
-                    osdConfigItem->rotation = v;
+                if (ctx->path_match == PNT_OSD_V2_POSX) 
+                {
+                    osdConfigItem->posX = new int;
+                    *(osdConfigItem->posX) = v;
+                }
+                else if (ctx->path_match == PNT_OSD_V2_POSY)
+                {
+                    osdConfigItem->posY = new int;
+                    *(osdConfigItem->posY) = v;
+                }
+                else if (ctx->path_match == PNT_OSD_V2_TRANSPARENCY)
+                {
+                    osdConfigItem->transparency = new int;
+                    *(osdConfigItem->transparency) = v;
+                }
+                else if (ctx->path_match == PNT_OSD_V2_ROTATION)
+                {
+                    osdConfigItem->rotation = new int;
+                    *(osdConfigItem->rotation) = v;
+                }
             }
 
             if (ctx->path_match >= PNT_OSD_V2_ID)
@@ -1964,8 +1985,10 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
             break;
 
         case LEJPCB_VAL_STR_END:
-            if (ctx->path_match >= PNT_OSD_V2_TEXT && ctx->path_match <= PNT_OSD_V2_FILE)
+            if (ctx->path_match >= PNT_OSD_V2_NAME && ctx->path_match <= PNT_OSD_V2_FILE)
             {
+                if (ctx->path_match == PNT_OSD_V2_NAME)
+                    osdConfigItem->name = strdup(ctx->buf);                
                 if (ctx->path_match == PNT_OSD_V2_TEXT)
                     osdConfigItem->text = strdup(ctx->buf);
                 if (ctx->path_match == PNT_OSD_V2_FILE)
@@ -1987,7 +2010,7 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
                             u_ctx->flag |= PNT_FLAG_RESTART_OSD;
                         }
                         // update entry
-                        if ((osdConfigItem->text != nullptr || osdConfigItem->file != nullptr) && sizeof(osdConfigItem->streams))
+                        else
                         {
                             cfg->osdConfigItems[u_ctx->value-1].assign_or_update(osdConfigItem);
                             u_ctx->flag |= PNT_FLAG_RESTART_OSD;
@@ -1997,7 +2020,8 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
                 else
                 {
                     // add entry
-                    if ((osdConfigItem->text != nullptr || osdConfigItem->file != nullptr) && sizeof(osdConfigItem->streams))
+                    if ((osdConfigItem->text != nullptr || osdConfigItem->file != nullptr) && 
+                        osdConfigItem->streams != nullptr && osdConfigItem->name != nullptr && strlen(osdConfigItem->name))
                     {
                         cfg->addOsdConfigItem(osdConfigItem);
                         u_ctx->flag |= PNT_FLAG_RESTART_OSD;                      

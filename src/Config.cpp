@@ -742,18 +742,16 @@ void CFG::load()
                     {
                         bool isValid = true;
                         OsdConfigItem osdConfigItem;
-                        const char *delimiter = ":";
 
                         const Setting &streams = item["streams"];
                         if (streams.getType() == Setting::TypeArray)
                         {
-
+                            osdConfigItem.streams = new bool[OSD_STREAMS];
                             for (int j = 0; j < streams.getLength(); ++j)
                             {
                                 const Setting &stream = streams[j];
                                 if (stream.getType() == Setting::TypeInt && (int)streams[j] < OSD_STREAMS)
                                 {
-
                                     osdConfigItem.streams[streams[j]] = true;
                                 }
                                 else
@@ -762,12 +760,38 @@ void CFG::load()
                                 }
                             }
 
-                            if (!item.lookupValue("posX", osdConfigItem.posX) || !item.lookupValue("posY", osdConfigItem.posY))
+                            int tmpInt;
+                            osdConfigItem.posX = new int{0};
+                            if (item.lookupValue("posX", tmpInt))
+                                *(osdConfigItem.posX) = tmpInt;
+                            else
+                                isValid = false;
+
+                            osdConfigItem.posY = new int{0};
+                            if (item.lookupValue("posY", tmpInt))
+                                *(osdConfigItem.posY) = tmpInt;
+                            else
+                                isValid = false;
+                            
+                            osdConfigItem.transparency = new int{255};
+                            if (item.lookupValue("transparency", tmpInt))
+                                *(osdConfigItem.transparency) = tmpInt;
+
+                            osdConfigItem.rotation = new int{0};
+                            if (item.lookupValue("rotation", tmpInt))
+                                *(osdConfigItem.rotation) = tmpInt;
+
+                            const char *tmp = nullptr;
+                            if (item.lookupValue("name", tmp))
+                            {
+                                osdConfigItem.name = new char[strlen(tmp) + 1];
+                                strcpy(osdConfigItem.name, tmp);
+                            }
+                            else
                             {
                                 isValid = false;
                             }
 
-                            const char *tmp = nullptr;
                             if (item.lookupValue("file", tmp))
                             {
                                 osdConfigItem.file = new char[strlen(tmp) + 1];
@@ -783,70 +807,19 @@ void CFG::load()
                                 isValid = false;
                             }
 
-                            if (!item.lookupValue("transparency", osdConfigItem.transparency))
-                                osdConfigItem.transparency = 255;
-
-                            if (!item.lookupValue("rotation", osdConfigItem.rotation))
-                                osdConfigItem.rotation = 0;
-
-                            if (osdConfigItem.file && isValid && strchr(osdConfigItem.file, *delimiter))
-                            {
-                                char *token;
-                                char *file = strdup(osdConfigItem.file);
-
-                                token = strtok_r(file, delimiter, &file);
-                                if (token != nullptr)
-                                {
-                                    free(osdConfigItem.file);
-                                    osdConfigItem.file = new char[strlen(token) + 1];
-                                    strcpy(osdConfigItem.file, token);
-                                }
-                                else
-                                {
-                                    isValid = false;
-                                }
-
-                                if (isValid && strchr(file, *delimiter))
-                                {
-                                    token = strtok_r(nullptr, delimiter, &file);
-                                    if (token != nullptr)
-                                        osdConfigItem.width = atoi(token);
-                                    else
-                                        isValid = false;
-                                }
-                                else
-                                {
-                                    isValid = false;
-                                }
-
-                                if (isValid && !strchr(file, *delimiter))
-                                {
-                                    token = strtok_r(nullptr, delimiter, &file);
-                                    if (token != nullptr)
-                                        osdConfigItem.height = atoi(token);
-                                    else
-                                        isValid = false;
-                                }
-                                else
-                                {
-                                    isValid = false;
-                                }
-
-                                free(file);
-                            }
-
                             if (isValid)
                             {
                                 /*
                                 std::cout << "osdItem " << i << "\r\n{\r\n"
-                                          << "  posX: " << osdConfigItem.posX << "\r\n"
-                                          << "  posY: " << osdConfigItem.posY << "\r\n"
+                                          << "  posX: " << *osdConfigItem.posX << "\r\n"
+                                          << "  posY: " << *osdConfigItem.posY << "\r\n"
                                           << "  width: " << osdConfigItem.width << "\r\n"
                                           << "  height: " << osdConfigItem.height << "\r\n"
+                                          << "  name: " << (osdConfigItem.name ? osdConfigItem.name : "") << "\r\n"
                                           << "  file: " << (osdConfigItem.file ? osdConfigItem.file : "") << "\r\n"
                                           << "  text: " << (osdConfigItem.text ? osdConfigItem.text : "") << "\r\n"
-                                          << "  transparency: " << osdConfigItem.transparency << "\r\n"
-                                          << "  rotation: " << osdConfigItem.rotation << "\r\n"
+                                          << "  transparency: " << *osdConfigItem.transparency << "\r\n"
+                                          << "  rotation: " << *osdConfigItem.rotation << "\r\n"
                                           << "  isValid: " << isValid << "\r\n}" << std::endl;
                                 */
 

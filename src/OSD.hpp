@@ -33,7 +33,6 @@ struct OSDItemV2
     OSDItemV2(const OsdConfigItem *osdCi, int osdGrp)
         : data(nullptr), width(0), height(0), text(nullptr), rgnAttrData(nullptr)
     {
-
         int ret;
 
         osdConfigItem.assign_or_update(osdCi);
@@ -54,7 +53,7 @@ struct OSDItemV2
         grpRgnAttr.show = 1;
         grpRgnAttr.layer = 1;
         grpRgnAttr.gAlphaEn = 1;
-        grpRgnAttr.fgAlhpa = osdConfigItem.transparency; /*transparency*/
+        grpRgnAttr.fgAlhpa = *osdConfigItem.transparency; /*transparency*/
         IMP_OSD_SetGrpRgnAttr(imp_rgn, osdGrp, &grpRgnAttr);
     };
 };
