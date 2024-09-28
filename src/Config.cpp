@@ -600,6 +600,7 @@ bool CFG::updateConfig()
 
     Setting &root = lc.getRoot();
 
+    // region of interest
     if (root.exists("rois"))
         root.remove("rois");
 
@@ -612,6 +613,41 @@ bool CFG::updateConfig()
         entry.add(Setting::TypeInt) = motion.rois[i].p0_y;
         entry.add(Setting::TypeInt) = motion.rois[i].p1_x;
         entry.add(Setting::TypeInt) = motion.rois[i].p1_y;
+    }
+
+    // osd v2 
+    if (root.exists("osd"))
+        root.remove("osd");
+
+    Setting &osd = root.add("osd", Setting::TypeGroup);
+    
+    Setting &items = osd.add("items", Setting::TypeList);
+
+    for (int i = 0; i < numOsdConfigItems; i++)
+    {
+        Setting &item = items.add(Setting::TypeGroup);
+
+        Setting &streams = item.add("streams", Setting::TypeArray);
+        if(osdConfigItems[i].streams[0])
+            streams.add(Setting::TypeInt) = 0;
+        if(osdConfigItems[i].streams[1])
+            streams.add(Setting::TypeInt) = 1;            
+
+        item.add("posX", Setting::TypeInt) = osdConfigItems[i].posX;
+        item.add("posY", Setting::TypeInt) = osdConfigItems[i].posY;
+        item.add("transparency", Setting::TypeInt) = osdConfigItems[i].transparency;
+        item.add("rotation", Setting::TypeInt) = osdConfigItems[i].rotation;
+
+        if (osdConfigItems[i].text) 
+        {
+            item.add("text", Setting::TypeString) = osdConfigItems[i].text;
+        }
+        else if (osdConfigItems[i].file) 
+        {
+            char s[strlen(osdConfigItems[i].file) + 14];
+            sprintf(s, "%s:%d:%d", osdConfigItems[i].file, osdConfigItems[i].width, osdConfigItems[i].height);
+            item.add("file", Setting::TypeString) = s;
+        }        
     }
 
     lc.writeFile(filePath);
