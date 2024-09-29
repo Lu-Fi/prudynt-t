@@ -429,7 +429,9 @@ void *Worker::stream_grabber(void *arg)
                     if (global_video[encChn]->idr_fix)
                     {
                         IMP_Encoder_RequestIDR(encChn);
+                        IMP_Encoder_FlushStream(encChn);
                         global_video[encChn]->idr_fix--;
+                        LOG_DEBUG("Hey Paul, " << global_video[encChn]->idr_fix << " more.");
                     }
                 }
             }

@@ -47,7 +47,7 @@ protected:
                                                    serverRequestAlternativeByteHandlerClientData);
         
         //request idr frame every second for the next x seconds
-        global_video[encChn]->idr_fix = 5; 
+        global_video[encChn]->idr_fix = 15; 
         IMPEncoder::flush(encChn);
     }
 private:
