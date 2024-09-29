@@ -2004,7 +2004,10 @@ signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
                     if(u_ctx->value<=cfg->numOsdConfigItems)
                     {
                         // delete entry
-                        if (osdConfigItem->text == nullptr && osdConfigItem->file == nullptr)
+                        if (osdConfigItem->text == nullptr && osdConfigItem->file == nullptr && 
+                            osdConfigItem->posX == nullptr && osdConfigItem->posY == nullptr &&
+                            osdConfigItem->transparency == nullptr && osdConfigItem->rotation == nullptr &&
+                            osdConfigItem->name == nullptr && osdConfigItem->streams == nullptr)
                         {
                             cfg->deleteOsdConfigItem(u_ctx->value-1);
                             u_ctx->flag |= PNT_FLAG_RESTART_OSD;

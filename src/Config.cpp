@@ -633,16 +633,22 @@ bool CFG::updateConfig()
         if(osdConfigItems[i].streams[1])
             streams.add(Setting::TypeInt) = 1;            
 
-        item.add("posX", Setting::TypeInt) = osdConfigItems[i].posX;
-        item.add("posY", Setting::TypeInt) = osdConfigItems[i].posY;
-        item.add("transparency", Setting::TypeInt) = osdConfigItems[i].transparency;
-        item.add("rotation", Setting::TypeInt) = osdConfigItems[i].rotation;
+        item.add("posX", Setting::TypeInt) = *osdConfigItems[i].posX;
+        item.add("posY", Setting::TypeInt) = *osdConfigItems[i].posY;
+        item.add("transparency", Setting::TypeInt) = *osdConfigItems[i].transparency;
+        item.add("rotation", Setting::TypeInt) = *osdConfigItems[i].rotation;
 
-        if (osdConfigItems[i].text) 
+        if (osdConfigItems[i].name != nullptr) 
+        {
+            item.add("name", Setting::TypeString) = osdConfigItems[i].text;
+        }
+
+        if (osdConfigItems[i].text != nullptr) 
         {
             item.add("text", Setting::TypeString) = osdConfigItems[i].text;
         }
-        else if (osdConfigItems[i].file) 
+        
+        if (osdConfigItems[i].file != nullptr) 
         {
             char s[strlen(osdConfigItems[i].file) + 14];
             sprintf(s, "%s:%d:%d", osdConfigItems[i].file, osdConfigItems[i].width, osdConfigItems[i].height);
