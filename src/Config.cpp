@@ -498,8 +498,16 @@ void handleConfigItem2(Config &lc, ConfigItem<T> &item)
             {
                 if (processLine(line, value))
                 {
-                    item.value = value;
-                    readFromProc = true;
+                    if constexpr (std::is_same_v<T, const char *> == true) 
+                    {
+                        if(strcmp(item.value, value) == 0)
+                            readFromProc = true;
+                    }
+                    else
+                    {
+                        if(item.value == value)
+                            readFromProc = true;
+                    }  
                 }
             }
         }
