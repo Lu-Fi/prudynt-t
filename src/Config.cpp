@@ -12,6 +12,13 @@
 namespace fs = std::filesystem;
 using namespace libconfig;
 
+bool align(int &number, int target)
+{
+    if(number % target == 0) return false;
+    number = (((number + (target/2)) >> (target/4)) << (target/4));
+    return true;
+}
+
 bool validateIntGe0(const int &v)
 {
     return v >= 0;

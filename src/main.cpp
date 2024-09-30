@@ -97,7 +97,6 @@ int main(int argc, const char *argv[])
     global_video[0] = std::make_shared<video_stream>(0, &cfg->stream0, "stream0");
     global_video[1] = std::make_shared<video_stream>(1, &cfg->stream1, "stream1");
     global_jpeg[0] = std::make_shared<jpeg_stream>(2, &cfg->stream2);
-    // global_jpeg[1] = std::make_shared<jpeg_stream>(jpeg_stream{3, &cfg->stream3});
 
 #if defined(AUDIO_SUPPORT)
     global_audio[0] = std::make_shared<audio_stream>(1, 0, 0);

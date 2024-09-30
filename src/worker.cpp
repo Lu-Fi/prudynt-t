@@ -96,6 +96,17 @@ void *Worker::jpeg_grabber(void *arg)
     if (global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->imp_framesource != nullptr && 
         global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->imp_framesource->initialized()) 
     {
+
+        if (align(global_jpeg[jpgChn]->stream->width, 16))
+        {
+            LOG_INFO("stream" << sh->encChn << " resolution width realigned. " << global_jpeg[jpgChn]->stream->width);
+        }
+
+        if (align(global_jpeg[jpgChn]->stream->height, 8))
+        {
+            LOG_INFO("stream" << sh->encChn << " resolution height realigned. " << global_jpeg[jpgChn]->stream->height);
+        }
+
         global_jpeg[jpgChn]->imp_encoder = IMPEncoder::createNew(
             global_jpeg[jpgChn]->stream, sh->encChn, global_jpeg[jpgChn]->stream->jpeg_channel, "stream2");
 

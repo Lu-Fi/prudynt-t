@@ -63,6 +63,15 @@
 
 #define OSD_STREAMS 2
 
+
+
+#ifndef PNT_HLP_ALIGN
+#define PNT_HLP_ALIGN
+bool align(int &number, int target);
+#endif // PNT_HLP_ALIGN
+
+
+
 extern std::mutex mutex_main;
 
 struct OsdConfigItem
@@ -77,18 +86,12 @@ struct OsdConfigItem
     char *text;
     char *file;
     char *name;
-    //int flags;
 
     OsdConfigItem()
         : streams(nullptr), posX(nullptr), posY(nullptr), width(0), height(0),
           transparency(nullptr), rotation(nullptr), text(nullptr), file(nullptr), name(nullptr)//, flags(0)
     {
-        /*
-        for (int i = 0; i < OSD_STREAMS; ++i)
-        {
-            streams[i] = false;
-        }
-        */
+
     };
 
     ~OsdConfigItem()
