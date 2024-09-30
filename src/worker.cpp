@@ -93,167 +93,181 @@ void *Worker::jpeg_grabber(void *arg)
     gettimeofday(&global_jpeg[jpgChn]->stream->stats.ts, NULL);
     global_jpeg[jpgChn]->stream->stats.ts.tv_sec -= 10;
 
-    global_jpeg[jpgChn]->imp_encoder = IMPEncoder::createNew(
-        global_jpeg[jpgChn]->stream, sh->encChn, global_jpeg[jpgChn]->stream->jpeg_channel, "stream2");
-
-    // inform main that initialization is complete
-    sh->has_started.release();
-
-    ret = IMP_Encoder_StartRecvPic(global_jpeg[jpgChn]->encChn);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StartRecvPic(" << global_jpeg[jpgChn]->encChn << ")");
-    if (ret != 0)
-        return 0;
-
-    global_jpeg[jpgChn]->active = true;
-    global_jpeg[jpgChn]->running = true;
-    while (global_jpeg[jpgChn]->running)
+    if (global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->imp_framesource != nullptr && 
+        global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->imp_framesource->initialized()) 
     {
-        /*
-         * if jpeg_idle_fps = 0, the thread is put into sleep until a client is connected.
-         * if jpeg_idle_fps > 0, we try to reach a frame rate of stream.jpeg_idle_fps. enen if no client is connected.
-         * if a client is connected via WS / HTTP we try to reach a framerate of stream.fps
-         * the thread will fallback into idle / sleep mode if no client request was made for more than a second
-         */
-        auto now = steady_clock::now();
+        global_jpeg[jpgChn]->imp_encoder = IMPEncoder::createNew(
+            global_jpeg[jpgChn]->stream, sh->encChn, global_jpeg[jpgChn]->stream->jpeg_channel, "stream2");
 
-        std::unique_lock lck(mutex_main);
-        bool request_or_overrun = global_jpeg[jpgChn]->request_or_overrun();
-        lck.unlock();
+        // inform main that initialization is complete
+        sh->has_started.release();
 
-        if (request_or_overrun || targetFps)
+        if(global_jpeg[jpgChn]->imp_encoder->initialized())
         {
-            auto diff_last_image = duration_cast<milliseconds>(now - global_jpeg[jpgChn]->last_image).count();
+            ret = IMP_Encoder_StartRecvPic(global_jpeg[jpgChn]->encChn);
+            LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StartRecvPic(" << global_jpeg[jpgChn]->encChn << ")");
+            if (ret != 0)
+                return 0;
 
-            // we remove targetFps/10 millisecond's as image creation time
-            // by this we get besser FPS results
-            if (targetFps && diff_last_image >= ((1000 / targetFps) - targetFps / 10))
+            global_jpeg[jpgChn]->active = true;
+            global_jpeg[jpgChn]->running = true;
+            while (global_jpeg[jpgChn]->running)
             {
-                // check if current jpeg channal is running if not start it
-                if (!global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->active)
-                {
+                /*
+                * if jpeg_idle_fps = 0, the thread is put into sleep until a client is connected.
+                * if jpeg_idle_fps > 0, we try to reach a frame rate of stream.jpeg_idle_fps. enen if no client is connected.
+                * if a client is connected via WS / HTTP we try to reach a framerate of stream.fps
+                * the thread will fallback into idle / sleep mode if no client request was made for more than a second
+                */
+                auto now = steady_clock::now();
 
-                    /* required video channel was not running, we need to start it
-                     * and set run_for_jpeg as a reason.
-                     */
-                    std::unique_lock<std::mutex> lock_stream{mutex_main};
-                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = true;
-                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->should_grab_frames.notify_one();
-                    lock_stream.unlock();
-                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->is_activated.acquire();
-                }
+                std::unique_lock lck(mutex_main);
+                bool request_or_overrun = global_jpeg[jpgChn]->request_or_overrun();
+                lck.unlock();
 
-                // subscriber is connected
-                if (request_or_overrun)
+                if (request_or_overrun || targetFps)
                 {
-                    if (targetFps != global_jpeg[jpgChn]->stream->fps)
-                        targetFps = global_jpeg[jpgChn]->stream->fps;
-                }
-                // no subscriber is connected
-                else
-                {
-                    if (targetFps != global_jpeg[jpgChn]->stream->jpeg_idle_fps)
-                        targetFps = global_jpeg[jpgChn]->stream->jpeg_idle_fps;
-                }
+                    auto diff_last_image = duration_cast<milliseconds>(now - global_jpeg[jpgChn]->last_image).count();
 
-                if (IMP_Encoder_PollingStream(global_jpeg[jpgChn]->encChn, cfg->general.imp_polling_timeout) == 0)
-                {
-                    IMPEncoderStream stream;
-                    if (IMP_Encoder_GetStream(global_jpeg[jpgChn]->encChn, &stream, GET_STREAM_BLOCKING) == 0)
+                    // we remove targetFps/10 millisecond's as image creation time
+                    // by this we get besser FPS results
+                    if (targetFps && diff_last_image >= ((1000 / targetFps) - targetFps / 10))
                     {
-                        fps++;
-                        bps += stream.pack->length;
-
-                        //  Check for success
-                        const char *tempPath = "/tmp/snapshot.tmp";                     // Temporary path
-                        const char *finalPath = global_jpeg[jpgChn]->stream->jpeg_path; // Final path for the JPEG snapshot
-
-                        // Open and create temporary file with read and write permissions
-                        int snap_fd = open(tempPath, O_RDWR | O_CREAT | O_TRUNC, 0666);
-                        if (snap_fd >= 0)
+                        // check if current jpeg channal is running if not start it
+                        if (!global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->active)
                         {
-                            // Save the JPEG stream to the file
-                            save_jpeg_stream(snap_fd, &stream);
 
-                            // Close the temporary file after writing is done
-                            close(snap_fd);
-
-                            // Atomically move the temporary file to the final destination
-                            if (rename(tempPath, finalPath) != 0)
-                            {
-                                LOG_ERROR("Failed to move JPEG snapshot from " << tempPath << " to " << finalPath);
-                                std::remove(tempPath); // Attempt to remove the temporary file if rename fails
-                            }
-                            else
-                            {
-                                // LOG_DEBUG("JPEG snapshot successfully updated");
-                            }
+                            /* required video channel was not running, we need to start it
+                            * and set run_for_jpeg as a reason.
+                            */
+                            std::unique_lock<std::mutex> lock_stream{mutex_main};
+                            global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = true;
+                            global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->should_grab_frames.notify_one();
+                            lock_stream.unlock();
+                            global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->is_activated.acquire();
                         }
+
+                        // subscriber is connected
+                        if (request_or_overrun)
+                        {
+                            if (targetFps != global_jpeg[jpgChn]->stream->fps)
+                                targetFps = global_jpeg[jpgChn]->stream->fps;
+                        }
+                        // no subscriber is connected
                         else
                         {
-                            LOG_ERROR("Failed to open JPEG snapshot for writing: " << tempPath);
+                            if (targetFps != global_jpeg[jpgChn]->stream->jpeg_idle_fps)
+                                targetFps = global_jpeg[jpgChn]->stream->jpeg_idle_fps;
                         }
 
-                        IMP_Encoder_ReleaseStream(global_jpeg[jpgChn]->encChn, &stream); // Release stream after saving
+                        if (IMP_Encoder_PollingStream(global_jpeg[jpgChn]->encChn, cfg->general.imp_polling_timeout) == 0)
+                        {
+                            IMPEncoderStream stream;
+                            if (IMP_Encoder_GetStream(global_jpeg[jpgChn]->encChn, &stream, GET_STREAM_BLOCKING) == 0)
+                            {
+                                fps++;
+                                bps += stream.pack->length;
+
+                                //  Check for success
+                                const char *tempPath = "/tmp/snapshot.tmp";                     // Temporary path
+                                const char *finalPath = global_jpeg[jpgChn]->stream->jpeg_path; // Final path for the JPEG snapshot
+
+                                // Open and create temporary file with read and write permissions
+                                int snap_fd = open(tempPath, O_RDWR | O_CREAT | O_TRUNC, 0666);
+                                if (snap_fd >= 0)
+                                {
+                                    // Save the JPEG stream to the file
+                                    save_jpeg_stream(snap_fd, &stream);
+
+                                    // Close the temporary file after writing is done
+                                    close(snap_fd);
+
+                                    // Atomically move the temporary file to the final destination
+                                    if (rename(tempPath, finalPath) != 0)
+                                    {
+                                        LOG_ERROR("Failed to move JPEG snapshot from " << tempPath << " to " << finalPath);
+                                        std::remove(tempPath); // Attempt to remove the temporary file if rename fails
+                                    }
+                                    else
+                                    {
+                                        // LOG_DEBUG("JPEG snapshot successfully updated");
+                                    }
+                                }
+                                else
+                                {
+                                    LOG_ERROR("Failed to open JPEG snapshot for writing: " << tempPath);
+                                }
+
+                                IMP_Encoder_ReleaseStream(global_jpeg[jpgChn]->encChn, &stream); // Release stream after saving
+                            }
+
+                            ms = tDiffInMs(&global_jpeg[jpgChn]->stream->stats.ts);
+                            if (ms > 1000)
+                            {
+                                global_jpeg[jpgChn]->stream->stats.fps = fps;
+                                global_jpeg[jpgChn]->stream->stats.bps = bps;
+                                fps = 0;
+                                bps = 0;
+                                gettimeofday(&global_jpeg[jpgChn]->stream->stats.ts, NULL);
+
+                                LOG_DDEBUG("JPG " << jpgChn << 
+                                        " fps: " << global_jpeg[jpgChn]->stream->stats.fps << 
+                                        " bps: " << global_jpeg[jpgChn]->stream->stats.bps <<
+                                        " diff_last_image: " << diff_last_image <<
+                                        " request_or_overrun: " << request_or_overrun <<
+                                        " targetFps: " << targetFps <<
+                                        " ms: " << ms);
+                            }                
+                        }
+
+                        global_jpeg[jpgChn]->last_image = steady_clock::now();
                     }
-
-                    ms = tDiffInMs(&global_jpeg[jpgChn]->stream->stats.ts);
-                    if (ms > 1000)
+                    else
                     {
-                        global_jpeg[jpgChn]->stream->stats.fps = fps;
-                        global_jpeg[jpgChn]->stream->stats.bps = bps;
-                        fps = 0;
-                        bps = 0;
-                        gettimeofday(&global_jpeg[jpgChn]->stream->stats.ts, NULL);
-
-                        LOG_DDEBUG("JPG " << jpgChn << 
-                                " fps: " << global_jpeg[jpgChn]->stream->stats.fps << 
-                                " bps: " << global_jpeg[jpgChn]->stream->stats.bps <<
-                                " diff_last_image: " << diff_last_image <<
-                                " request_or_overrun: " << request_or_overrun <<
-                                " targetFps: " << targetFps <<
-                                " ms: " << ms);
-                    }                
+                        usleep(1000);
+                    }
                 }
+                else
+                {
+                    LOG_DDEBUG("JPEG LOCK" << " channel:" << jpgChn);
 
-                global_jpeg[jpgChn]->last_image = steady_clock::now();
+                    global_jpeg[jpgChn]->stream->stats.bps = 0;
+                    global_jpeg[jpgChn]->stream->stats.fps = 0;
+                    targetFps = 0;
+
+                    std::unique_lock<std::mutex> lock_stream{mutex_main};
+                    global_jpeg[jpgChn]->active = false;
+                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = false;
+                    while (!global_jpeg[jpgChn]->request_or_overrun() && !global_restart_video)
+                        global_jpeg[jpgChn]->should_grab_frames.wait(lock_stream);
+
+                    targetFps = global_jpeg[jpgChn]->stream->fps;
+
+                    global_jpeg[jpgChn]->is_activated.release();
+                    global_jpeg[jpgChn]->active = true;
+
+                    LOG_DDEBUG("JPEG UNLOCK" << " channel:" << jpgChn);
+                }
             }
-            else
-            {
-                usleep(1000);
-            }
+
+            ret = IMP_Encoder_StopRecvPic(global_jpeg[jpgChn]->encChn);
+            LOG_DEBUG("IMP_Encoder_StopRecvPic(" << global_jpeg[jpgChn]->encChn << ")");                
         }
-        else
+
+        if (global_jpeg[jpgChn]->imp_encoder)
         {
-            LOG_DDEBUG("JPEG LOCK" << " channel:" << jpgChn);
+            global_jpeg[jpgChn]->imp_encoder->deinit();
 
-            global_jpeg[jpgChn]->stream->stats.bps = 0;
-            global_jpeg[jpgChn]->stream->stats.fps = 0;
-            targetFps = 0;
-
-            std::unique_lock<std::mutex> lock_stream{mutex_main};
-            global_jpeg[jpgChn]->active = false;
-            global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = false;
-            while (!global_jpeg[jpgChn]->request_or_overrun() && !global_restart_video)
-                global_jpeg[jpgChn]->should_grab_frames.wait(lock_stream);
-
-            targetFps = global_jpeg[jpgChn]->stream->fps;
-
-            global_jpeg[jpgChn]->is_activated.release();
-            global_jpeg[jpgChn]->active = true;
-
-            LOG_DDEBUG("JPEG UNLOCK" << " channel:" << jpgChn);
+            delete global_jpeg[jpgChn]->imp_encoder;
+            global_jpeg[jpgChn]->imp_encoder = nullptr;
         }
     }
-
-    if (global_jpeg[jpgChn]->imp_encoder)
+    else
     {
-        global_jpeg[jpgChn]->imp_encoder->deinit();
-
-        delete global_jpeg[jpgChn]->imp_encoder;
-        global_jpeg[jpgChn]->imp_encoder = nullptr;
+        // inform main that initialization is complete
+        LOG_ERROR("Error initializing jpeg channel, framesource not ready.");
+        sh->has_started.release();        
     }
-
-    LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StopRecvPic(" << global_jpeg[jpgChn]->encChn << ")");
 
     return 0;
 }
@@ -276,198 +290,200 @@ void *Worker::stream_grabber(void *arg)
     global_video[encChn]->imp_encoder = IMPEncoder::createNew(global_video[encChn]->stream, encChn, encChn, global_video[encChn]->name);
     global_video[encChn]->imp_framesource->enable();
 
-    gettimeofday(&imp_time_base, NULL);
-    IMP_System_RebaseTimeStamp(imp_time_base.tv_sec * (uint64_t)1000000);
-
     // inform main that initialization is complete
     sh->has_started.release();
 
-    ret = IMP_Encoder_StartRecvPic(encChn);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StartRecvPic(" << encChn << ")");
-    if (ret != 0)
-        return 0;
-
-    /* 'active' indicates, the thread is activly polling and grabbing images
-     * 'running' describes the runlevel of the thread, if this value is set to false
-     *           the thread exits and cleanup all ressources
-     */
-    global_video[encChn]->active = true;
-    global_video[encChn]->running = true;
-    while (global_video[encChn]->running)
+    if (global_video[encChn]->imp_framesource->initialized() && global_video[encChn]->imp_encoder->initialized())
     {
-        /* bool helper to check if this is the active jpeg channel and a jpeg is requested while
-         * the channel is inactive
-         */
-        bool run_for_jpeg = (encChn == global_jpeg[0]->stream->jpeg_channel && global_video[encChn]->run_for_jpeg);
+        gettimeofday(&imp_time_base, NULL);
+        IMP_System_RebaseTimeStamp(imp_time_base.tv_sec * (uint64_t)1000000);
 
-        /* now we need to verify that
-         * 1. a client is connected (hasDataCallback)
-         * 2. a jpeg is requested
-         */
-        if (global_video[encChn]->hasDataCallback || run_for_jpeg)
+        ret = IMP_Encoder_StartRecvPic(encChn);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StartRecvPic(" << encChn << ")");
+        if (ret != 0)
+            return 0;
+
+        /* 'active' indicates, the thread is activly polling and grabbing images
+        * 'running' describes the runlevel of the thread, if this value is set to false
+        *           the thread exits and cleanup all ressources
+        */
+        global_video[encChn]->active = true;
+        global_video[encChn]->running = true;
+        while (global_video[encChn]->running)
         {
-            if (IMP_Encoder_PollingStream(encChn, cfg->general.imp_polling_timeout) == 0)
+            /* bool helper to check if this is the active jpeg channel and a jpeg is requested while
+            * the channel is inactive
+            */
+            bool run_for_jpeg = (encChn == global_jpeg[0]->stream->jpeg_channel && global_video[encChn]->run_for_jpeg);
+
+            /* now we need to verify that
+            * 1. a client is connected (hasDataCallback)
+            * 2. a jpeg is requested
+            */
+            if (global_video[encChn]->hasDataCallback || run_for_jpeg)
             {
-                IMPEncoderStream stream;
-                if (IMP_Encoder_GetStream(encChn, &stream, GET_STREAM_BLOCKING) != 0)
+                if (IMP_Encoder_PollingStream(encChn, cfg->general.imp_polling_timeout) == 0)
                 {
-                    LOG_ERROR("IMP_Encoder_GetStream(" << encChn << ") failed");
-                    error_count++;
-                    continue;
-                }
-
-                int64_t nal_ts = stream.pack[stream.packCount - 1].timestamp;
-                struct timeval encoder_time;
-                encoder_time.tv_sec = nal_ts / 1000000;
-                encoder_time.tv_usec = nal_ts % 1000000;
-
-                for (uint32_t i = 0; i < stream.packCount; ++i)
-                {
-                    fps++;
-                    bps += stream.pack[i].length;
-
-                    if (global_video[encChn]->hasDataCallback)
+                    IMPEncoderStream stream;
+                    if (IMP_Encoder_GetStream(encChn, &stream, GET_STREAM_BLOCKING) != 0)
                     {
+                        LOG_ERROR("IMP_Encoder_GetStream(" << encChn << ") failed");
+                        error_count++;
+                        continue;
+                    }
+
+                    int64_t nal_ts = stream.pack[stream.packCount - 1].timestamp;
+                    struct timeval encoder_time;
+                    encoder_time.tv_sec = nal_ts / 1000000;
+                    encoder_time.tv_usec = nal_ts % 1000000;
+
+                    for (uint32_t i = 0; i < stream.packCount; ++i)
+                    {
+                        fps++;
+                        bps += stream.pack[i].length;
+
+                        if (global_video[encChn]->hasDataCallback)
+                        {
 #if defined(PLATFORM_T31)
-                        uint8_t *start = (uint8_t *)stream.virAddr + stream.pack[i].offset;
-                        uint8_t *end = start + stream.pack[i].length;
+                            uint8_t *start = (uint8_t *)stream.virAddr + stream.pack[i].offset;
+                            uint8_t *end = start + stream.pack[i].length;
 #elif defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
-                        uint8_t *start = (uint8_t *)stream.pack[i].virAddr;
-                        uint8_t *end = (uint8_t *)stream.pack[i].virAddr + stream.pack[i].length;
+                            uint8_t *start = (uint8_t *)stream.pack[i].virAddr;
+                            uint8_t *end = (uint8_t *)stream.pack[i].virAddr + stream.pack[i].length;
 #endif
-                        H264NALUnit nalu;
+                            H264NALUnit nalu;
 
-                        nalu.imp_ts = stream.pack[i].timestamp;
-                        nalu.time = encoder_time;
+                            nalu.imp_ts = stream.pack[i].timestamp;
+                            nalu.time = encoder_time;
 
-                        // We use start+4 because the encoder inserts 4-byte MPEG
-                        //'startcodes' at the beginning of each NAL. Live555 complains
-                        nalu.data.insert(nalu.data.end(), start + 4, end);
-                        if (global_video[encChn]->idr == false)
-                        {
+                            // We use start+4 because the encoder inserts 4-byte MPEG
+                            //'startcodes' at the beginning of each NAL. Live555 complains
+                            nalu.data.insert(nalu.data.end(), start + 4, end);
+                            if (global_video[encChn]->idr == false)
+                            {
 #if defined(PLATFORM_T31)
-                            if (stream.pack[i].nalType.h264NalType == 7 ||
-                                stream.pack[i].nalType.h264NalType == 8 ||
-                                stream.pack[i].nalType.h264NalType == 5)
-                            {
-                                global_video[encChn]->idr = true;
-                            }
-                            else if (stream.pack[i].nalType.h265NalType == 32)
-                            {
-                                global_video[encChn]->idr = true;
-                            }
+                                if (stream.pack[i].nalType.h264NalType == 7 ||
+                                    stream.pack[i].nalType.h264NalType == 8 ||
+                                    stream.pack[i].nalType.h264NalType == 5)
+                                {
+                                    global_video[encChn]->idr = true;
+                                }
+                                else if (stream.pack[i].nalType.h265NalType == 32)
+                                {
+                                    global_video[encChn]->idr = true;
+                                }
 #elif defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
-                            if (stream.pack[i].dataType.h264Type == 7 ||
-                                stream.pack[i].dataType.h264Type == 8 ||
-                                stream.pack[i].dataType.h264Type == 5)
-                            {
-                                global_video[encChn]->idr = true;
-                            }
+                                if (stream.pack[i].dataType.h264Type == 7 ||
+                                    stream.pack[i].dataType.h264Type == 8 ||
+                                    stream.pack[i].dataType.h264Type == 5)
+                                {
+                                    global_video[encChn]->idr = true;
+                                }
 #elif defined(PLATFORM_T30)
-                            if (stream.pack[i].dataType.h264Type == 7 ||
-                                stream.pack[i].dataType.h264Type == 8 ||
-                                stream.pack[i].dataType.h264Type == 5)
-                            {
-                                global_video[encChn]->idr = true;
-                            }
-                            else if (stream.pack[i].dataType.h265Type == 32)
-                            {
-                                global_video[encChn]->idr = true;
-                            }
+                                if (stream.pack[i].dataType.h264Type == 7 ||
+                                    stream.pack[i].dataType.h264Type == 8 ||
+                                    stream.pack[i].dataType.h264Type == 5)
+                                {
+                                    global_video[encChn]->idr = true;
+                                }
+                                else if (stream.pack[i].dataType.h265Type == 32)
+                                {
+                                    global_video[encChn]->idr = true;
+                                }
 #endif
-                        }
-
-                        if (global_video[encChn]->idr == true)
-                        {
-                            if (!global_video[encChn]->msgChannel->write(nalu))
-                            {
-                                LOG_ERROR("video " << 
-                                    "channel:" << encChn << ", " <<
-                                    "package:" << i << " of " << stream.packCount << ", " <<
-                                    "packageSize:" << nalu.data.size() <<
-                                    ".  !sink clogged!");
                             }
-                            else
+
+                            if (global_video[encChn]->idr == true)
                             {
-                                std::unique_lock<std::mutex> lock_stream{global_video[encChn]->onDataCallbackLock};
-                                if (global_video[encChn]->onDataCallback)
-                                    global_video[encChn]->onDataCallback();
+                                if (!global_video[encChn]->msgChannel->write(nalu))
+                                {
+                                    LOG_ERROR("video " << 
+                                        "channel:" << encChn << ", " <<
+                                        "package:" << i << " of " << stream.packCount << ", " <<
+                                        "packageSize:" << nalu.data.size() <<
+                                        ".  !sink clogged!");
+                                }
+                                else
+                                {
+                                    std::unique_lock<std::mutex> lock_stream{global_video[encChn]->onDataCallbackLock};
+                                    if (global_video[encChn]->onDataCallback)
+                                        global_video[encChn]->onDataCallback();
+                                }
                             }
                         }
                     }
-                }
 
-                IMP_Encoder_ReleaseStream(encChn, &stream);
+                    IMP_Encoder_ReleaseStream(encChn, &stream);
 
-                ms = tDiffInMs(&global_video[encChn]->stream->stats.ts);
-                if (ms > 1000)
-                {
-
-                    /* currently we write into osd and stream stats,
-                     * osd will be removed and redesigned in future
-                     */
-                    global_video[encChn]->stream->stats.bps = bps;
-                    global_video[encChn]->stream->osd.stats.bps = bps;
-                    global_video[encChn]->stream->stats.fps = fps;
-                    global_video[encChn]->stream->osd.stats.fps = fps;
-
-                    fps = 0;
-                    bps = 0;
-                    gettimeofday(&global_video[encChn]->stream->stats.ts, NULL);
-                    global_video[encChn]->stream->osd.stats.ts = global_video[encChn]->stream->stats.ts;
-                    /*
-                    IMPEncoderCHNStat encChnStats;
-                    IMP_Encoder_Query(channel->encChn, &encChnStats);
-                    LOG_DEBUG("ChannelStats::" << channel->encChn <<
-                                ", registered:" << encChnStats.registered <<
-                                ", leftPics:" << encChnStats.leftPics <<
-                                ", leftStreamBytes:" << encChnStats.leftStreamBytes <<
-                                ", leftStreamFrames:" << encChnStats.leftStreamFrames <<
-                                ", curPacks:" << encChnStats.curPacks <<
-                                ", work_done:" << encChnStats.work_done);
-                    */
-                    if (global_video[encChn]->idr_fix)
+                    ms = tDiffInMs(&global_video[encChn]->stream->stats.ts);
+                    if (ms > 1000)
                     {
-                        IMP_Encoder_RequestIDR(encChn);
-                        IMP_Encoder_FlushStream(encChn);
-                        global_video[encChn]->idr_fix--;
-                        LOG_DEBUG("Hey Paul, " << global_video[encChn]->idr_fix << " more.");
+
+                        /* currently we write into osd and stream stats,
+                        * osd will be removed and redesigned in future
+                        */
+                        global_video[encChn]->stream->stats.bps = bps;
+                        global_video[encChn]->stream->osd.stats.bps = bps;
+                        global_video[encChn]->stream->stats.fps = fps;
+                        global_video[encChn]->stream->osd.stats.fps = fps;
+
+                        fps = 0;
+                        bps = 0;
+                        gettimeofday(&global_video[encChn]->stream->stats.ts, NULL);
+                        global_video[encChn]->stream->osd.stats.ts = global_video[encChn]->stream->stats.ts;
+                        /*
+                        IMPEncoderCHNStat encChnStats;
+                        IMP_Encoder_Query(channel->encChn, &encChnStats);
+                        LOG_DEBUG("ChannelStats::" << channel->encChn <<
+                                    ", registered:" << encChnStats.registered <<
+                                    ", leftPics:" << encChnStats.leftPics <<
+                                    ", leftStreamBytes:" << encChnStats.leftStreamBytes <<
+                                    ", leftStreamFrames:" << encChnStats.leftStreamFrames <<
+                                    ", curPacks:" << encChnStats.curPacks <<
+                                    ", work_done:" << encChnStats.work_done);
+                        */
+                        if (global_video[encChn]->idr_fix)
+                        {
+                            IMP_Encoder_RequestIDR(encChn);
+                            IMP_Encoder_FlushStream(encChn);
+                            global_video[encChn]->idr_fix--;
+                        }
                     }
                 }
+                else
+                {
+                    error_count++;
+                    LOG_DDEBUG("IMP_Encoder_PollingStream(" << encChn << ", " << cfg->general.imp_polling_timeout << ") timeout !");
+                }
             }
-            else
+            else if (global_video[encChn]->onDataCallback == nullptr && !global_restart_video && !global_video[encChn]->run_for_jpeg)
             {
-                error_count++;
-                LOG_DDEBUG("IMP_Encoder_PollingStream(" << encChn << ", " << cfg->general.imp_polling_timeout << ") timeout !");
+                LOG_DDEBUG("VIDEO LOCK" << 
+                        " channel:" << encChn << 
+                        " hasCallbackIsNull:" << (global_video[encChn]->onDataCallback == nullptr) << 
+                        " restartVideo:" << global_restart_video << 
+                        " runForJpeg:" << global_video[encChn]->run_for_jpeg);
+
+                global_video[encChn]->stream->stats.bps = 0;
+                global_video[encChn]->stream->stats.fps = 0;
+                global_video[encChn]->stream->osd.stats.bps = 0;
+                global_video[encChn]->stream->osd.stats.fps = 0;
+
+                std::unique_lock<std::mutex> lock_stream{mutex_main};
+                global_video[encChn]->active = false;
+                while (global_video[encChn]->onDataCallback == nullptr && !global_restart_video && !global_video[encChn]->run_for_jpeg)
+                    global_video[encChn]->should_grab_frames.wait(lock_stream);
+
+                global_video[encChn]->active = true;
+                global_video[encChn]->is_activated.release();
+
+                LOG_DDEBUG("VIDEO UNLOCK" << " channel:" << encChn);
             }
         }
-        else if (global_video[encChn]->onDataCallback == nullptr && !global_restart_video && !global_video[encChn]->run_for_jpeg)
-        {
-            LOG_DDEBUG("VIDEO LOCK" << 
-                       " channel:" << encChn << 
-                       " hasCallbackIsNull:" << (global_video[encChn]->onDataCallback == nullptr) << 
-                       " restartVideo:" << global_restart_video << 
-                       " runForJpeg:" << global_video[encChn]->run_for_jpeg);
 
-            global_video[encChn]->stream->stats.bps = 0;
-            global_video[encChn]->stream->stats.fps = 0;
-            global_video[encChn]->stream->osd.stats.bps = 0;
-            global_video[encChn]->stream->osd.stats.fps = 0;
-
-            std::unique_lock<std::mutex> lock_stream{mutex_main};
-            global_video[encChn]->active = false;
-            while (global_video[encChn]->onDataCallback == nullptr && !global_restart_video && !global_video[encChn]->run_for_jpeg)
-                global_video[encChn]->should_grab_frames.wait(lock_stream);
-
-            global_video[encChn]->active = true;
-            global_video[encChn]->is_activated.release();
-
-            LOG_DDEBUG("VIDEO UNLOCK" << " channel:" << encChn);
-        }
+        ret = IMP_Encoder_StopRecvPic(encChn);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StopRecvPic(" << encChn << ")");
     }
-
-    ret = IMP_Encoder_StopRecvPic(encChn);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_StopRecvPic(" << encChn << ")");
 
     if (global_video[encChn]->imp_framesource)
     {
@@ -475,10 +491,12 @@ void *Worker::stream_grabber(void *arg)
 
         if (global_video[encChn]->imp_encoder)
         {
-            global_video[encChn]->imp_encoder->deinit();
             delete global_video[encChn]->imp_encoder;
             global_video[encChn]->imp_encoder = nullptr;
         }
+
+        delete global_video[encChn]->imp_framesource;
+        global_video[encChn]->imp_framesource = nullptr;
     }
 
     return 0;

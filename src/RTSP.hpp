@@ -16,7 +16,8 @@ public:
     void addSubsession(int chnNr, _stream &stream);
     void start();
     static void *run(void* arg);
-    
+    std::binary_semaphore started{0};
+
 private:
     UsageEnvironment *env{};
     TaskScheduler *scheduler{};

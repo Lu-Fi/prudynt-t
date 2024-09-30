@@ -43,6 +43,7 @@ public:
 
     ~IMPEncoder()
     {
+        deinit();
         destroy();
     };
 
@@ -54,6 +55,9 @@ public:
     static void flush(int encChn);
 
     OSD *osd = nullptr;
+    bool initialized() {
+        return (status == 7);
+    };
 
 private:
     IMPEncoderCHNAttr chnAttr{};
@@ -67,6 +71,7 @@ private:
     int encChn{};
     int encGrp{};
     const char *name{};
+    int status{0};
 };
 
 #endif

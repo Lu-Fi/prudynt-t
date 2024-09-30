@@ -109,19 +109,20 @@ void RTSP::start()
     }
     OutPacketBuffer::maxSize = cfg->rtsp.out_buffer_size;
 
-    if (cfg->stream0.enabled)
+    if (cfg->stream0.enabled && global_video[0]->running)
     {
         addSubsession(0, cfg->stream0);
     }
 
-    if (cfg->stream1.enabled)
+    if (cfg->stream1.enabled && global_video[1]->running)
     {
         addSubsession(1, cfg->stream1);
     }
 
+    started.release();
+    
     global_rtsp_thread_signal = 0;
     env->taskScheduler().doEventLoop(&global_rtsp_thread_signal);
-
     // Clean up VPS if it was allocated
     /*
     if (vps) {

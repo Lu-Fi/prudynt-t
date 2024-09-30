@@ -321,10 +321,12 @@ int IMPEncoder::init()
 #endif
 
     ret = IMP_Encoder_CreateChn(encChn, &chnAttr);
-    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_Encoder_CreateChn(" << encChn << ", chnAttr)");
+    LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_CreateChn(" << encChn << ", chnAttr)");
+    status |= 1;
 
     ret = IMP_Encoder_RegisterChn(encGrp, encChn);
     LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_Encoder_RegisterChn(" << encGrp << ", " << encChn << ")");
+    status |= 2;
 
     if (strcmp(stream->format, "JPEG") != 0)
     {
@@ -354,6 +356,7 @@ int IMPEncoder::init()
         IMP_Encoder_SetJpegeQl(2, &pstJpegeQl);
     }
 #endif
+    status |= 4;
 
     return ret;
 }
@@ -362,9 +365,9 @@ int IMPEncoder::deinit()
 {
     LOG_DEBUG("IMPEncoder::deinit(" << encChn << ", " << encGrp << ")");
 
-    int ret;
+    int ret = 0;
 
-    if (strcmp(stream->format, "JPEG") != 0)
+    if (strcmp(stream->format, "JPEG") != 0 && (status & 4))
     {
         if (osd)
         {
@@ -376,24 +379,25 @@ int IMPEncoder::deinit()
             LOG_DEBUG_OR_ERROR(ret, "IMP_System_UnBind(&fs, &enc)");
         }
     }
-    else
+
+    if(status & 2) 
     {
-        ret = IMP_Encoder_StopRecvPic(encChn);
-        LOG_DEBUG("IMP_Encoder_StopRecvPic(" << encChn << ")");
+        ret = IMP_Encoder_UnRegisterChn(encChn);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_UnRegisterChn(" << encChn << ")");
     }
 
-    ret = IMP_Encoder_UnRegisterChn(encChn);
-    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_Encoder_UnRegisterChn(" << encChn << ")");
-
-    ret = IMP_Encoder_DestroyChn(encChn);
-    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_Encoder_DestroyChn(" << encChn << ")");
+    if(status & 1) 
+    {
+        ret = IMP_Encoder_DestroyChn(encChn);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_DestroyChn(" << encChn << ")");
+    }
 
     return ret;
 }
 
 void IMPEncoder::exit_osd()
 {
-    int ret;
+    int ret = 0;
 
     if (osd != nullptr)
     {
@@ -427,11 +431,12 @@ void IMPEncoder::init_osd()
 
 int IMPEncoder::destroy()
 {
+    int ret = 0;
 
-    int ret;
-
-    ret = IMP_Encoder_DestroyGroup(encChn);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_DestroyGroup(" << encChn << ")");
-
+    if(status & 4)
+    {
+        ret = IMP_Encoder_DestroyGroup(encChn);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_Encoder_DestroyGroup(" << encChn << ")");
+    }
     return ret;
 }

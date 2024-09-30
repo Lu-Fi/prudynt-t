@@ -23,11 +23,15 @@ public:
     int enable();
     int disable();
     int destroy();
+    bool initialized() {
+        return (status == 3);
+    };
 
 private:
     _stream *stream{};
     _sensor *sensor{};
     int chnNr;
+    int status{0};
 };
 
 #endif

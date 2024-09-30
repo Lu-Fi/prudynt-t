@@ -62,9 +62,9 @@ void start_video(int encChn)
     StartHelper sh{encChn};
     int ret = pthread_create(&global_video[encChn]->thread, nullptr, Worker::stream_grabber, static_cast<void *>(&sh));
     LOG_DEBUG_OR_ERROR(ret, "create video[" << encChn << "] thread");
-
     // wait for initialization done
     sh.has_started.acquire();
+    LOG_DEBUG("video[" << encChn << "] thread initialized");
 }
 
 int main(int argc, const char *argv[])
@@ -126,6 +126,7 @@ int main(int argc, const char *argv[])
                 LOG_DEBUG_OR_ERROR(ret, "create jpeg thread");
                 // wait for initialization done
                 sh.has_started.acquire();
+                LOG_DEBUG("jpeg thread initialized");
             }
 
             if (cfg->stream0.osd.enabled || cfg->stream1.osd.enabled)
@@ -149,6 +150,7 @@ int main(int argc, const char *argv[])
             LOG_DEBUG_OR_ERROR(ret, "create audio thread");
             // wait for initialization done
             sh.has_started.acquire();
+            LOG_DEBUG("audio thread initialized");
         }
 #endif
 
@@ -157,6 +159,8 @@ int main(int argc, const char *argv[])
         {
             int ret = pthread_create(&rtsp_thread, nullptr, RTSP::run, &rtsp);
             LOG_DEBUG_OR_ERROR(ret, "create rtsp thread");
+            rtsp.started.acquire();
+            LOG_DEBUG("rtsp thread initialized");
         }
 
         /* we should wait a short period to ensure all services are up

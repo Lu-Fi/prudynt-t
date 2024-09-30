@@ -88,59 +88,62 @@ int IMPFramesource::init()
 #endif
 
     ret = IMP_FrameSource_CreateChn(chnNr, &chnAttr);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_FrameSource_CreateChn(" << chnNr << ", &chnAttr)");
+    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_CreateChn(" << chnNr << ", &chnAttr)");
+    status |= 1;
 
     ret = IMP_FrameSource_SetChnAttr(chnNr, &chnAttr);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_FrameSource_SetChnAttr(" << chnNr << ", &chnAttr)");
+    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_SetChnAttr(" << chnNr << ", &chnAttr)");
 
 #if !defined(NO_FIFO)
     IMPFSChnFifoAttr fifo;
     ret = IMP_FrameSource_GetChnFifoAttr(chnNr, &fifo);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_FrameSource_GetChnFifoAttr(" << chnNr << ", &fifo)");
+    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_GetChnFifoAttr(" << chnNr << ", &fifo)");
 
     fifo.maxdepth = 0;
     ret = IMP_FrameSource_SetChnFifoAttr(chnNr, &fifo);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_FrameSource_SetChnFifoAttr(" << chnNr << ", &fifo)");
+    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_SetChnFifoAttr(" << chnNr << ", &fifo)");
 
     ret = IMP_FrameSource_SetFrameDepth(chnNr, 0);
-    LOG_DEBUG_OR_ERROR(ret, "IMP_FrameSource_SetFrameDepth(" << chnNr << ", 0)");
+    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_SetFrameDepth(" << chnNr << ", 0)");
 #endif
-
-    //ret = IMP_FrameSource_EnableChn(chnNr);
-    //LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_EnableChn(" << chnNr << ")");
-
     return ret;
 }
 
 int IMPFramesource::enable()
 {
-
-    int ret;
-
+    int ret = 0;
     ret = IMP_FrameSource_EnableChn(chnNr);
     LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_EnableChn(" << chnNr << ")");
+    status |= 2;
 
-    return 0;
+    return ret;
 }
 
 int IMPFramesource::disable()
 {
+    int ret = 0;
 
-    int ret;
+    if(status & 2)
+    {
+        ret = IMP_FrameSource_DisableChn(chnNr);
+        LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_DisableChn(" << chnNr << ")");
+        status &=~2;
+    }
 
-    ret = IMP_FrameSource_DisableChn(chnNr);
-    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_DisableChn(" << chnNr << ")");
-
-    return 0;
+    return ret;
 }
 
 int IMPFramesource::destroy()
 {
+    int ret = 0;
 
-    int ret;
+    if(status & 1)
+    {
+        ret = IMP_FrameSource_DestroyChn(chnNr);
+        LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_DestroyChn(" << chnNr << ")");
+        status &=~1;
+    }
 
-    ret = IMP_FrameSource_DestroyChn(chnNr);
-    LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_FrameSource_DestroyChn(" << chnNr << ")");
-
-    return 0;
+    status = 0;
+    return ret;
 }

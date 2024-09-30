@@ -27,9 +27,10 @@ bool validateInt2(const int &v)
     return v >= 0 && v <= 1;
 }
 
+// stream.buffers
 bool validateInt32(const int &v)
 {
-    return v >= 0 && v <= 32;
+    return v > 0 && v <= 32;
 }
 
 bool validateInt50_150(const int &v)
