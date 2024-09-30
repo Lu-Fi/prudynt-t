@@ -16,6 +16,13 @@ IMPFramesource *IMPFramesource::createNew(
     return new IMPFramesource(stream, sensor, chnNr);
 }
 
+bool align16(int &number) 
+{
+    if(number % 16 == 0) return false;
+    number = (((number + 8) >> 4) << 4);
+    return true;
+}
+
 int IMPFramesource::init()
 {
     LOG_DEBUG("IMPFramesource::init()");
@@ -36,7 +43,17 @@ int IMPFramesource::init()
     {
         scale = 0;
     }
+    
+    if (align16(stream->width))
+    {
+        LOG_INFO("resolution width realigned. " << stream->width);
+    }
 
+    if (align16(stream->height))
+    {
+        LOG_INFO("resolution height realigned. " << stream->height);
+    }
+    
     chnAttr.pixFmt = PIX_FMT_NV12;
     chnAttr.outFrmRateNum = stream->fps;
     chnAttr.outFrmRateDen = 1;
