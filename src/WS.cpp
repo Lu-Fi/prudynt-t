@@ -2170,6 +2170,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
     char *url_ptr = nullptr;
     int url_length = 0;
     int request_method = 0;
+    bool is_localhost = false;
 
     // security token ?token=
     char url_token[128]{0};
@@ -2189,11 +2190,18 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
     {
     // ############################ WEBSOCKET ###############################
     case LWS_CALLBACK_ESTABLISHED:
+        
         LOG_DDEBUG("LWS_CALLBACK_ESTABLISHED id:" << u_ctx->id << ", ip:" << client_ip);
+
+        // check if it's a connection from localhost
+        if (strcmp(client_ip, "127.0.0.1") == 0 || strcmp(client_ip, "::1") == 0)
+            is_localhost = true;
 
         // check if security is required and validate token
         url_length = lws_get_urlarg_by_name_safe(wsi, "token", url_token, sizeof(url_token));
-        if (strcmp(token, url_token) == 0 || (strcmp(cfg->websocket.usertoken, "") != 0 && strcmp(cfg->websocket.usertoken, url_token) == 0))
+        if (is_localhost || 
+            strcmp(token, url_token) == 0 || 
+            (strcmp(cfg->websocket.usertoken, "") != 0 && strcmp(cfg->websocket.usertoken, url_token) == 0))
         {
             /* initialize new u_ctx session structure.
              * assign current wsi and a new sessionid
@@ -2387,7 +2395,14 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
 
         // check if security is required and validate token
         url_length = lws_get_urlarg_by_name_safe(wsi, "token", url_token, sizeof(url_token));
-        if (strcmp(token, url_token) == 0 || (strcmp(cfg->websocket.usertoken, "") != 0 && strcmp(cfg->websocket.usertoken, url_token) == 0))
+
+        // check if it's a connection from localhost
+        if (strcmp(client_ip, "127.0.0.1") == 0 || strcmp(client_ip, "::1") == 0)
+            is_localhost = true;
+
+        if (is_localhost || 
+            strcmp(token, url_token) == 0 || 
+            (strcmp(cfg->websocket.usertoken, "") != 0 && strcmp(cfg->websocket.usertoken, url_token) == 0))
         {
             /* initialize new u_ctx session structure.
             * assign current wsi and a new sessionid
