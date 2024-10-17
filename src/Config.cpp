@@ -239,7 +239,6 @@ std::vector<ConfigItem<int>> CFG::getIntItems()
         {"stream0.max_gop", stream0.max_gop, 60, validateIntGe0},
         {"stream0.osd.font_size", stream0.osd.font_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream0.osd.font_stroke", stream0.osd.font_stroke, 1, validateIntGe0},
-        {"stream0.osd.font_stroke_size", stream0.osd.font_stroke_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream0.osd.font_xscale", stream0.osd.font_xscale, 100, validateInt50_150},
         {"stream0.osd.font_yscale", stream0.osd.font_yscale, 100, validateInt50_150},
         {"stream0.osd.font_yoffset", stream0.osd.font_yoffset, 3, validateIntGe0},
@@ -255,7 +254,6 @@ std::vector<ConfigItem<int>> CFG::getIntItems()
         {"stream1.max_gop", stream1.max_gop, 60, validateIntGe0},
         {"stream1.osd.font_size", stream1.osd.font_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream1.osd.font_stroke", stream1.osd.font_stroke, 1, validateIntGe0},
-        {"stream1.osd.font_stroke_size", stream1.osd.font_stroke_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream1.osd.font_xscale", stream1.osd.font_xscale, 100, validateInt50_150},
         {"stream1.osd.font_yscale", stream1.osd.font_yscale, 100, validateInt50_150},
         {"stream1.osd.font_yoffset", stream1.osd.font_yoffset, 3, validateIntGe0},
@@ -549,7 +547,8 @@ void handleConfigItem2(Config &lc, ConfigItem<T> &item)
     std::string sect = path.substr(0, pos);
     std::string entr = path.substr(pos + 1);
 
-    if (isDifferent && !readFromProc && !isDefault && !item.noSave)
+    //if (isDifferent && !readFromProc && !isDefault && !item.noSave)
+    if (true)
     {
         ensurePathExists(lc.getRoot(), item.path);
 
