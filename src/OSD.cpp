@@ -1,11 +1,11 @@
 #include "OSD.hpp"
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
 #define IMPEncoderCHNStat IMPEncoderChnStat
 #endif
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #define picWidth uWidth
 #define picHeight uHeight
 #endif
@@ -304,12 +304,19 @@ void OSD::set_text(OSDItem *osdItem, IMPOSDRgnAttr *rgnAttr, const char *text, i
 
     if (item_width != osdItem->width || item_height != osdItem->height)
     {
+        bool locallyAllocated = false;
+
         if (rgnAttr == nullptr)
         {
+            locallyAllocated = true;
             rgnAttr = new IMPOSDRgnAttr();
             IMP_OSD_GetRgnAttr(osdItem->imp_rgn, rgnAttr);
         }
 
+        if (locallyAllocated) {
+            delete rgnAttr;
+        }
+        
         set_pos(rgnAttr, posX, posY, item_width, item_height, stream_width, stream_height);
 
         rgnAttr->data.picData.pData = osdItem->data;
@@ -426,7 +433,6 @@ int autoFontSize(int pWidth)
 
 void replacestr(char *line, const char *search, const char *replace)
 {
-    int count;
     char *sp;
 
     if ((sp = strstr(line, search)) == NULL)
@@ -672,17 +678,29 @@ bool OSD::OSDTextPlaceholders(OSDItemV2 *osdItem)
 
     if (strstr(osdItem->osdConfigItem.text, "%fps") != nullptr)
     {
-        char fps[4];
-        snprintf(fps, 4, "%3d", osd.stats.fps);
+        char fps[8];
+        snprintf(fps, sizeof(fps), "%3d", osd.stats.fps);
         replacestr(new_text, "%fps", fps);
     }
 
     if (strstr(osdItem->osdConfigItem.text, "%bps") != nullptr)
     {
-        char bps[8];
-        snprintf(bps, 8, "%5d", osd.stats.bps);
+        char bps[16];
+        snprintf(bps, sizeof(bps), "%5d", osd.stats.bps);
         replacestr(new_text, "%bps", bps);
     }
+
+    if (strstr(osdItem->osdConfigItem.text, "%gain") != nullptr)
+    {
+        char gain[16];
+        uint32_t sgain = 0;
+        int ret = IMP_ISP_Tuning_GetTotalGain(&sgain);
+        if (ret == 0)
+        {
+            snprintf(gain, sizeof(gain), "%u", sgain);
+            replacestr(new_text, "%gain", gain);
+        }
+    }  
 
     if (strstr(osdItem->osdConfigItem.text, "%uptime") != nullptr)
     {
@@ -731,14 +749,16 @@ OSD *OSD::createNew(
 void OSD::init()
 {
     int ret = 0;
-    LOG_DEBUG("OSD init encChn: " << encChn);
+    LOG_DEBUG("OSD init for begin");
 
     // initially get time
     current = time(nullptr);
     ltime = localtime(&current);
 
+#if !(defined(PLATFORM_T40) || defined(PLATFORM_T41))
     ret = IMP_OSD_SetPoolSize(cfg->general.osd_pool_size * 1024);
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_SetPoolSize(" << (cfg->general.osd_pool_size * 1024) << ")");
+#endif
 
     last_updated_second = -1;
 
@@ -758,13 +778,12 @@ void OSD::init()
     ret = IMP_OSD_CreateGroup(osdGrp);
 
     int fontSize = autoFontSize(channelAttributes.encAttr.picWidth);
-    int autoOffset = round((float)(channelAttributes.encAttr.picWidth * 0.004));
 
     if (osd.font_size == OSD_AUTO_VALUE)
     {
         // use cfg->set to set noSave, so auto values will not written to config
         char tmpPath[22];
-        snprintf(tmpPath, sizeof(tmpPath), "stream%d.osd.font_size\0", encChn);
+        snprintf(tmpPath, sizeof(tmpPath), "stream%d.osd.font_size", encChn);
         cfg->set<int>(tmpPath, fontSize, true);
     }
 
@@ -803,7 +822,7 @@ void OSD::init()
                 osdItem->data = loadBGRAImage(osdItem->osdConfigItem.file, imageSize);
 
                 // Verify OSD logo size vs dimensions
-                if ((osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4) == imageSize)
+                if ((size_t)(osdItem->osdConfigItem.width * osdItem->osdConfigItem.height * 4) == imageSize)
                 {
                     rgnAttr.data.picData.pData = osdItem->data;
 
@@ -875,8 +894,10 @@ int OSD::start()
     ret = IMP_OSD_Start(osdGrp);
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_Start(" << osdGrp << ")");
 
+#if !(defined(PLATFORM_T40) || defined(PLATFORM_T41))
     ret = IMP_OSD_SetPoolSize(cfg->general.osd_pool_size * 1024);
     LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_SetPoolSize(" << (cfg->general.osd_pool_size * 1024) << ")");
+#endif
 
     is_started = true;
 

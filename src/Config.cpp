@@ -24,7 +24,7 @@ bool validateInt1(const int &v)
 
 bool validateInt2(const int &v)
 {
-    return v >= 0 && v <= 1;
+    return v >= 0 && v <= 2;
 }
 
 bool validateInt32(const int &v)
@@ -37,9 +37,9 @@ bool validateInt50_150(const int &v)
     return v >= 50 && v <= 150;
 }
 
-bool validateInt60(const int &v)
+bool validateInt120(const int &v)
 {
-    return v >= 0 && v <= 60 || v == IMP_AUTO_VALUE;
+    return (v >= 0 && v <= 120) || v == IMP_AUTO_VALUE;
 }
 
 bool validateInt255(const int &v)
@@ -87,6 +87,7 @@ std::vector<ConfigItem<bool>> CFG::getBoolItems()
     return {
 #if defined(AUDIO_SUPPORT)
         {"audio.input_enabled", audio.input_enabled, true, validateBool},
+        {"audio.force_stereo", audio.force_stereo, false, validateBool},
 #if defined(LIB_AUDIO_PROCESSING)
         {"audio.input_high_pass_filter", audio.input_high_pass_filter, false, validateBool},
         {"audio.input_agc_enabled", audio.input_agc_enabled, false, validateBool},
@@ -144,7 +145,7 @@ std::vector<ConfigItem<const char *>> CFG::getCharItems()
             return a.count(std::string(v)) == 1;
         }},
         {"stream0.rtsp_endpoint", stream0.rtsp_endpoint, "ch0", validateCharNotEmpty},
-        {"stream1.rtsp_endpoint", stream1.rtsp_endpoint, "ch1", validateCharNotEmpty},
+        {"stream0.rtsp_info", stream0.rtsp_info, "stream0", validateCharNotEmpty},
         {"stream1.format", stream1.format, "H264", [](const char *v) { return strcmp(v, "H264") == 0 || strcmp(v, "H265") == 0; }},
         {"stream1.osd.font_path", stream1.osd.font_path, "/usr/share/fonts/NotoSansDisplay-Condensed2.ttf", validateCharNotEmpty},
         {"stream1.osd.time_format", stream1.osd.time_format, "%F %T", validateCharNotEmpty},
@@ -153,6 +154,8 @@ std::vector<ConfigItem<const char *>> CFG::getCharItems()
             std::set<std::string> a = {"CBR", "VBR", "SMART", "FIXQP", "CAPPED_VBR", "CAPPED_QUALITY"};
             return a.count(std::string(v)) == 1;
         }},
+        {"stream1.rtsp_endpoint", stream1.rtsp_endpoint, "ch1", validateCharNotEmpty},
+        {"stream1.rtsp_info", stream1.rtsp_info, "stream1", validateCharNotEmpty},
         {"stream2.jpeg_path", stream2.jpeg_path, "/tmp/snapshot.jpg", validateCharNotEmpty},
         {"websocket.name", websocket.name, "wss prudynt", validateCharNotEmpty},
         {"websocket.usertoken", websocket.usertoken, "", [](const char *v) {
@@ -166,14 +169,14 @@ std::vector<ConfigItem<int>> CFG::getIntItems()
     return {
 #if defined(AUDIO_SUPPORT)
         {"audio.input_bitrate", audio.input_bitrate, 40, [](const int &v) { return v >= 6 && v <= 256; }},
-        {"audio.input_sample_rate", audio.input_sample_rate, 48000, [](const int &v) {
+        {"audio.input_sample_rate", audio.input_sample_rate, 16000, [](const int &v) {
             std::set<int> a = {8000, 16000, 24000, 44100, 48000};
             return a.count(v) == 1;
         }},
         {"audio.input_vol", audio.input_vol, 80, [](const int &v) { return v >= -30 && v <= 120; }},
-        {"audio.input_gain", audio.input_gain, 25, [](const int &v) { return v >= 0 && v <= 31; }},
+        {"audio.input_gain", audio.input_gain, 25, [](const int &v) { return v >= -1 && v <= 31; }},
 #if defined(LIB_AUDIO_PROCESSING)
-        {"audio.input_alc_gain", audio.input_alc_gain, 0, [](const int &v) { return v >= 0 && v <= 7; }},
+        {"audio.input_alc_gain", audio.input_alc_gain, 0, [](const int &v) { return v >= -1 && v <= 7; }},
         {"audio.input_agc_target_level_dbfs", audio.input_agc_target_level_dbfs, 10, [](const int &v) { return v >= 0 && v <= 31; }},
         {"audio.input_agc_compression_gain_db", audio.input_agc_compression_gain_db, 0, [](const int &v) { return v >= 0 && v <= 90; }},
         {"audio.input_noise_suppression", audio.input_noise_suppression, 0, [](const int &v) { return v >= 0 && v <= 3; }},
@@ -206,6 +209,7 @@ std::vector<ConfigItem<int>> CFG::getIntItems()
         {"motion.ivs_polling_timeout", motion.ivs_polling_timeout, 1000, [](const int &v) { return v >= 100 && v <= 10000; }},
         {"motion.cooldown_time", motion.cooldown_time, 5, validateIntGe0},
         {"motion.init_time", motion.init_time, 5, validateIntGe0},
+        {"motion.min_time", motion.min_time, 1, validateIntGe0},
         {"motion.sensitivity", motion.sensitivity, 1, validateIntGe0},
         {"motion.skip_frame_count", motion.skip_frame_count, 5, validateIntGe0},
         {"motion.frame_width", motion.frame_width, IVS_AUTO_VALUE, validateIntGe0},
@@ -220,18 +224,18 @@ std::vector<ConfigItem<int>> CFG::getIntItems()
         {"rtsp.out_buffer_size", rtsp.out_buffer_size, 500000, validateIntGe0},
         {"rtsp.port", rtsp.port, 554, validateInt65535},
         {"rtsp.send_buffer_size", rtsp.send_buffer_size, 307200, validateIntGe0},
-        {"sensor.fps", sensor.fps, 25, validateInt60, false, "/proc/jz/sensor/max_fps"},
+        {"rtsp.session_reclaim", rtsp.session_reclaim, 65, validateIntGe0},
+        {"sensor.fps", sensor.fps, 25, validateInt120, false, "/proc/jz/sensor/max_fps"},
         {"sensor.height", sensor.height, 1080, validateIntGe0, false, "/proc/jz/sensor/height"},
         {"sensor.width", sensor.width, 1920, validateIntGe0, false, "/proc/jz/sensor/width"},
         {"stream0.bitrate", stream0.bitrate, 3000, validateIntGe0},
         {"stream0.buffers", stream0.buffers, DEFAULT_BUFFERS_0, validateInt32},
-        {"stream0.fps", stream0.fps, 25, validateInt60},
+        {"stream0.fps", stream0.fps, 25, validateInt120},
         {"stream0.gop", stream0.gop, 20, validateIntGe0},
         {"stream0.height", stream0.height, 1080, validateIntGe0, false, "/proc/jz/sensor/height"},
         {"stream0.max_gop", stream0.max_gop, 60, validateIntGe0},
         {"stream0.osd.font_size", stream0.osd.font_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream0.osd.font_stroke", stream0.osd.font_stroke, 1, validateIntGe0},
-        {"stream0.osd.font_stroke_size", stream0.osd.font_stroke_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream0.osd.font_xscale", stream0.osd.font_xscale, 100, validateInt50_150},
         {"stream0.osd.font_yscale", stream0.osd.font_yscale, 100, validateInt50_150},
         {"stream0.osd.font_yoffset", stream0.osd.font_yoffset, 3, validateIntGe0},
@@ -241,24 +245,24 @@ std::vector<ConfigItem<int>> CFG::getIntItems()
         {"stream0.profile", stream0.profile, 2, validateInt2},
         {"stream1.bitrate", stream1.bitrate, 1000, validateIntGe0},
         {"stream1.buffers", stream1.buffers, DEFAULT_BUFFERS_1, validateInt32},
-        {"stream1.fps", stream1.fps, 25, validateInt60},
+        {"stream1.fps", stream1.fps, 25, validateInt120},
         {"stream1.gop", stream1.gop, 20, validateIntGe0},
         {"stream1.height", stream1.height, 360, validateIntGe0},
         {"stream1.max_gop", stream1.max_gop, 60, validateIntGe0},
         {"stream1.osd.font_size", stream1.osd.font_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream1.osd.font_stroke", stream1.osd.font_stroke, 1, validateIntGe0},
-        {"stream1.osd.font_stroke_size", stream1.osd.font_stroke_size, OSD_AUTO_VALUE, validateIntGe0},
         {"stream1.osd.font_xscale", stream1.osd.font_xscale, 100, validateInt50_150},
         {"stream1.osd.font_yscale", stream1.osd.font_yscale, 100, validateInt50_150},
         {"stream1.osd.font_yoffset", stream1.osd.font_yoffset, 3, validateIntGe0},
         {"stream1.osd.start_delay", stream1.osd.start_delay, 1, [](const int &v) { return v >= 1 && v <= 5000; }},
+        {"stream1.rotation", stream1.rotation, 0, validateInt2},
         {"stream1.width", stream1.width, 640, validateIntGe0},
         {"stream1.profile", stream1.profile, 2, validateInt2},
         {"stream2.jpeg_channel", stream2.jpeg_channel, 0, validateIntGe0},
         {"stream2.jpeg_quality", stream2.jpeg_quality, 75, [](const int &v) { return v > 0 && v <= 100; }},
         {"stream2.jpeg_idle_fps", stream2.jpeg_idle_fps, 1, [](const int &v) { return v >= 0 && v <= 30; }},
         {"stream2.fps", stream2.fps, 25, [](const int &v) { return v > 1 && v <= 30; }},
-        {"websocket.loglevel", websocket.loglevel, 4096, [](const int &v) { return v > 0 && v <= 1024; }},
+        {"websocket.loglevel", websocket.loglevel, 4096, [](const int &v) { return v > 0 && v <= 4096; }},
         {"websocket.port", websocket.port, 8089, validateInt65535},
         {"websocket.first_image_delay", websocket.first_image_delay, 100, validateInt65535},
     };
@@ -344,7 +348,7 @@ bool CFG::readConfig()
         }
         catch (...)
         {
-            LOG_WARN("Failed to load prudynt configuration file from /etc.");
+            LOG_WARN("Failed to load prudynt configuration file from /etc/config.");
             return false; // Exit if configuration file is missing
         }
     }
@@ -469,119 +473,46 @@ void handleConfigItem(Config &lc, ConfigItem<T> &item)
 template <typename T>
 void handleConfigItem2(Config &lc, ConfigItem<T> &item)
 {
-    T configValue{0};
-    bool readFromConfig = false;
-
-    if constexpr (std::is_same_v<T, const char *> == true)
-    {
-        std::string tempValue;
-        readFromConfig = lc.lookupValue(item.path, tempValue);
-        if (readFromConfig)
-        {
-            configValue = tempValue.c_str();
-        }
-    }
-    else
-    {
-        readFromConfig = lc.lookupValue(item.path, configValue);
-    }
-
-    bool readFromProc = false;
-    if (!readFromConfig && item.procPath != nullptr && item.procPath[0] != '\0')
-    {
-        std::ifstream procFile(item.procPath);
-        if (procFile)
-        {
-            T value;
-            std::string line;
-            if (std::getline(procFile, line))
-            {
-                if (processLine(line, value))
-                {
-                    item.value = value;
-                    readFromProc = true;
-                }
-            }
-        }
-    }
-
-    bool isDifferent = true;
-    if (readFromConfig)
-    {
-        if constexpr (std::is_same_v<T, const char *>)
-        {
-            isDifferent = (strcmp(item.value, configValue) != 0);
-        }
-        else
-        {
-            isDifferent = (item.value != configValue);
-        }
-    }
-
-    bool isDefault = false;
-    if constexpr (std::is_same_v<T, const char *>)
-    {
-        isDefault = (strcmp(item.value, item.defaultValue) == 0);
-    }
-    else
-    {
-        isDefault = (item.value == item.defaultValue);
-    }
-
     std::string path(item.path);
     size_t pos = path.find_last_of('.');
     std::string sect = path.substr(0, pos);
     std::string entr = path.substr(pos + 1);
 
-    if (isDifferent && !readFromProc && !isDefault && !item.noSave)
+    ensurePathExists(lc.getRoot(), item.path);
+
+    Setting &section = lc.lookup(sect);
+    if (section.exists(entr))
     {
-        ensurePathExists(lc.getRoot(), item.path);
-
-        Setting &section = lc.lookup(sect);
-        if (section.exists(entr))
-        {
-            section.remove(entr);
-        }
-
-        Setting::Type type;
-        if constexpr (std::is_same_v<T, bool>)
-        {
-            type = Setting::TypeBoolean;
-        }
-        else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, const char *>)
-        {
-            type = Setting::TypeString;
-        }
-        else if constexpr (std::is_same_v<T, int> || std::is_same_v<T, unsigned int>)
-        {
-            type = Setting::TypeInt;
-        }
-
-        Setting &newSetting = section.add(entr, type);
-        if constexpr (std::is_same_v<T, unsigned int>)
-        {
-            newSetting = static_cast<long>(item.value);
-            newSetting.setFormat(Setting::FormatHex);
-        }
-        else if constexpr (std::is_same_v<T, const char *>)
-        {
-            newSetting = std::string(item.value);
-        }
-        else
-        {
-            newSetting = item.value;
-        }
+        section.remove(entr);
     }
-    else if (isDefault)
+
+    Setting::Type type;
+    if constexpr (std::is_same_v<T, bool>)
     {
-        if (lc.exists(sect))
-        {
-            Setting &section = lc.lookup(sect);
-            if (section.exists(entr))
-            {
-                section.remove(entr);
-            }
-        }
+        type = Setting::TypeBoolean;
+    }
+    else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, const char *>)
+    {
+        type = Setting::TypeString;
+    }
+    else if constexpr (std::is_same_v<T, int> || std::is_same_v<T, unsigned int>)
+    {
+        type = Setting::TypeInt;
+    }
+
+    Setting &newSetting = section.add(entr, type);
+    if constexpr (std::is_same_v<T, unsigned int>)
+    {
+        newSetting = static_cast<long>(item.value);
+        newSetting.setFormat(Setting::FormatHex);
+    }
+    else if constexpr (std::is_same_v<T, const char *>)
+    {
+        newSetting = std::string(item.value);
+    }
+    else
+    {
+        newSetting = item.value;
     }
 }
 
@@ -705,7 +636,6 @@ void CFG::load()
                     if (item.exists("streams"))
                     {
                         bool isValid = true;
-                        bool isFile = true;
                         OsdConfigItem osdConfigItem;
                         const char *delimiter = ":";
 
@@ -802,7 +732,7 @@ void CFG::load()
 
                             if (isValid)
                             {
-                                /*
+                                
                                 std::cout << "osdItem " << i << "\r\n{\r\n"
                                           << "  posX: " << osdConfigItem.posX << "\r\n"
                                           << "  posY: " << osdConfigItem.posY << "\r\n"
@@ -813,7 +743,7 @@ void CFG::load()
                                           << "  transparency: " << osdConfigItem.transparency << "\r\n"
                                           << "  rotation: " << osdConfigItem.rotation << "\r\n"
                                           << "  isValid: " << isValid << "\r\n}" << std::endl;
-                                */
+                                
 
                                 osdConfigItems[n++].assign_or_update(&osdConfigItem);
                             }

@@ -5,6 +5,7 @@
 #include <vector>
 #include <imp/imp_osd.h>
 #include <imp/imp_encoder.h>
+#include <imp/imp_isp.h>
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
@@ -14,7 +15,7 @@
 #include "Logger.hpp"
 #include "schrift.h"
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
 #define IMPEncoderCHNStat IMPEncoderChnStat
 #endif
@@ -47,7 +48,8 @@ struct OSDItemV2
         memset(&rgnAttr, 0, sizeof(IMPOSDRgnAttr));
         rgnAttr.type = OSD_REG_PIC;
         rgnAttr.fmt = PIX_FMT_BGRA;
-        IMP_OSD_SetRgnAttr(imp_rgn, &rgnAttr);
+        ret = IMP_OSD_SetRgnAttr(imp_rgn, &rgnAttr);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_SetRgnAttr(" << (int)imp_rgn << ", " << osdGrp << ", &rgnAttr) == " << ret);
 
         IMPOSDGrpRgnAttr grpRgnAttr;
         memset(&grpRgnAttr, 0, sizeof(IMPOSDGrpRgnAttr));
@@ -55,7 +57,8 @@ struct OSDItemV2
         grpRgnAttr.layer = 1;
         grpRgnAttr.gAlphaEn = 1;
         grpRgnAttr.fgAlhpa = osdConfigItem.transparency; /*transparency*/
-        IMP_OSD_SetGrpRgnAttr(imp_rgn, osdGrp, &grpRgnAttr);
+        ret = IMP_OSD_SetGrpRgnAttr(imp_rgn, osdGrp, &grpRgnAttr);
+        LOG_DEBUG_OR_ERROR(ret, "IMP_OSD_SetGrpRgnAttr(" << (int)imp_rgn << ", " << osdGrp << ", &grpRgnAttr) == " << ret);
     };
 };
 
@@ -66,6 +69,7 @@ struct OSDItem
     uint16_t width;
     uint16_t height;
     IMPOSDRgnAttrData *rgnAttrData;
+    bool isStatic = false;
 };
 
 struct Glyph
@@ -89,7 +93,8 @@ class OSD
 {
 public:
     static OSD *createNew(_osd &osd, int osdGrp, int encChn, const char *parent);
-    OSD(_osd &osd, int osdGrp, int encChn, const char *parent) : osd(osd), osdGrp(osdGrp), encChn(encChn), parent(parent)
+    OSD(_osd &osd, int osdGrp, int encChn, const char *parent) : 
+    osd(osd), parent(parent), osdGrp(osdGrp), encChn(encChn)
     {
         init();
     }

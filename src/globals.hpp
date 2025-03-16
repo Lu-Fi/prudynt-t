@@ -4,6 +4,8 @@
 #include <memory>
 #include <functional>
 #include <atomic>
+#include "liveMedia.hh"
+
 #include "MsgChannel.hpp"
 #include "IMPAudio.hpp"
 #include "IMPEncoder.hpp"
@@ -25,14 +27,17 @@ struct AudioFrame
 
 struct H264NALUnit
 {
-    std::vector<uint8_t> data;
-    struct timeval time;
-    int64_t imp_ts;
+	std::vector<uint8_t> data;
+    /* timestamp fix, can be removed if solved
+	struct timeval time;
+	int64_t imp_ts;
+    */
 };
 
 struct jpeg_stream
 {
     int encChn;
+    int streamChn;
     _stream *stream;
     std::atomic<bool> running; // set to false to make jpeg_grabber thread exit
     std::atomic<bool> active{false};
@@ -81,6 +86,8 @@ struct audio_stream
     std::condition_variable should_grab_frames;
     std::binary_semaphore is_activated{0};
 
+    StreamReplicator *streamReplicator = nullptr;
+
     audio_stream(int devId, int aiChn, int aeChn)
         : devId(devId), aiChn(aiChn), aeChn(aeChn), running(false), imp_audio(nullptr),
           msgChannel(std::make_shared<MsgChannel<AudioFrame>>(30)),
@@ -108,13 +115,14 @@ struct video_stream
     std::binary_semaphore is_activated{0};
 
     video_stream(int encChn, _stream *stream, const char *name)
-        : encChn(encChn), stream(stream), running(false), name(name), idr(false), imp_encoder(nullptr), imp_framesource(nullptr),
-          msgChannel(std::make_shared<MsgChannel<H264NALUnit>>(MSG_CHANNEL_SIZE)), onDataCallback(nullptr), idr_fix(0), run_for_jpeg{false},
+        : encChn(encChn), stream(stream), name(name), running(false), idr(false), idr_fix(0), imp_encoder(nullptr), imp_framesource(nullptr),
+          msgChannel(std::make_shared<MsgChannel<H264NALUnit>>(MSG_CHANNEL_SIZE)), onDataCallback(nullptr),  run_for_jpeg{false},
           hasDataCallback{false} {}
 };
 
 extern std::condition_variable global_cv_worker_restart;
 
+extern bool global_restart;
 extern bool global_restart_osd;
 extern bool global_restart_rtsp;
 extern bool global_restart_video;
@@ -123,7 +131,7 @@ extern bool global_restart_audio;
 extern bool global_osd_thread_signal;
 extern bool global_main_thread_signal;
 extern bool global_motion_thread_signal;
-extern char volatile global_rtsp_thread_signal;
+extern std::atomic<char> global_rtsp_thread_signal;
 
 extern std::shared_ptr<jpeg_stream> global_jpeg[NUM_VIDEO_CHANNELS];
 extern std::shared_ptr<audio_stream> global_audio[NUM_AUDIO_CHANNELS];

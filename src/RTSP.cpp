@@ -64,7 +64,7 @@ void RTSP::addSubsession(int chnNr, _stream &stream)
     LOG_DEBUG("Got necessary NAL Units.");
 
     ServerMediaSession *sms = ServerMediaSession::createNew(
-        *env, stream.rtsp_endpoint, "Sub", cfg->rtsp.name);
+        *env, stream.rtsp_endpoint, stream.rtsp_info, cfg->rtsp.name);
     IMPServerMediaSubsession *sub = IMPServerMediaSubsession::createNew(
         *env, (is_h265 ? vps : nullptr), sps, pps, chnNr // Conditional VPS
     );
@@ -89,18 +89,18 @@ void RTSP::start()
 {
     scheduler = BasicTaskScheduler::createNew();
     env = BasicUsageEnvironment::createNew(*scheduler);
-
+    
     if (cfg->rtsp.auth_required)
     {
         UserAuthenticationDatabase *auth = new UserAuthenticationDatabase;
         auth->addUserRecord(
             cfg->rtsp.username,
             cfg->rtsp.password);
-        rtspServer = RTSPServer::createNew(*env, cfg->rtsp.port, auth, 10);
+        rtspServer = RTSPServer::createNew(*env, cfg->rtsp.port, auth, cfg->rtsp.session_reclaim);
     }
     else
     {
-        rtspServer = RTSPServer::createNew(*env, cfg->rtsp.port, nullptr, 10);
+        rtspServer = RTSPServer::createNew(*env, cfg->rtsp.port, nullptr, cfg->rtsp.session_reclaim);
     }
     if (rtspServer == NULL)
     {
@@ -108,6 +108,18 @@ void RTSP::start()
         return;
     }
     OutPacketBuffer::maxSize = cfg->rtsp.out_buffer_size;
+
+#if defined(USE_AUDIO_STREAM_REPLICATOR)
+    if (cfg->audio.input_enabled)
+    {
+        audioSource = IMPDeviceSource<AudioFrame, audio_stream>::createNew(*env, 0, global_audio[audioChn], "audio");
+
+        if (global_audio[audioChn]->imp_audio->format == IMPAudioFormat::PCM)
+            audioSource = (IMPDeviceSource<AudioFrame, audio_stream> *)EndianSwap16::createNew(*env, audioSource);    
+
+        global_audio[audioChn]->streamReplicator = StreamReplicator::createNew(*env, audioSource, false);
+    }
+#endif
 
     if (cfg->stream0.enabled)
     {
@@ -121,6 +133,21 @@ void RTSP::start()
 
     global_rtsp_thread_signal = 0;
     env->taskScheduler().doEventLoop(&global_rtsp_thread_signal);
+
+#if defined(USE_AUDIO_STREAM_REPLICATOR)
+    if (cfg->audio.input_enabled)
+    {
+        if(global_audio[audioChn]->streamReplicator != nullptr )
+        {
+            global_audio[audioChn]->streamReplicator->detachInputSource();
+        }
+        if(audioSource != nullptr) 
+        {
+            delete audioSource;
+            audioSource = nullptr;
+        }
+    }
+#endif
 
     // Clean up VPS if it was allocated
     /*

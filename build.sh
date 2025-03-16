@@ -8,15 +8,24 @@ prudynt(){
 
 	cd $TOP
 	make clean
+
+	if [ "$2" = "-static" ]; then
+		BIN_TYPE="-DBINARY_STATIC"
+	elif [ "$2" = -"hybrid" ]; then
+		BIN_TYPE="-DBINARY_HYBRID"
+	else
+		BIN_TYPE="-DBINARY_DYNAMIC"
+	fi
+
 	/usr/bin/make -j$(nproc) \
 	ARCH= CROSS_COMPILE="${PRUDYNT_CROSS}" \
-	CFLAGS="-DPLATFORM_$1 -Os -DALLOW_RTSP_SERVER_PORT_REUSE=1 -DNO_OPENSSL=1 \
+	CFLAGS="-DPLATFORM_$1 $BIN_TYPE -O2 -DALLOW_RTSP_SERVER_PORT_REUSE=1 -DNO_OPENSSL=1 \
 	-I./3rdparty/install/include \
 	-I./3rdparty/install/include/liveMedia \
 	-I./3rdparty/install/include/groupsock \
 	-I./3rdparty/install/include/UsageEnvironment \
 	-I./3rdparty/install/include/BasicUsageEnvironment" \
-	LDFLAGS=" -L./3rdparty/install/lib $2" \
+	LDFLAGS=" -L./3rdparty/install/lib" \
 	-C $PWD all
 	exit 0
 }
@@ -99,7 +108,7 @@ deps() {
 		./genMakefiles prudynt-static
 	else
 		echo "SHARED LIVE555"
-		cp ../../res/live555-config.prudynt ./config.prudynt
+		patch config.linux-with-shared-libraries ../../res/live555-prudynt.patch --output=./config.prudynt
 		./genMakefiles prudynt
 	fi
 
@@ -134,6 +143,14 @@ deps() {
 			echo "use $1 libs"
 			cp ingenic-lib/$1/lib/1.1.6/uclibc/5.4.0/* $TOP/3rdparty/install/lib
 			;;
+		T40)
+			echo "use $1 libs"
+			cp ingenic-lib/$1/lib/1.2.0/uclibc/* $TOP/3rdparty/install/lib
+			;;
+		T41)
+			echo "use $1 libs"
+			cp ingenic-lib/$1/lib/1.2.0/uclibc/* $TOP/3rdparty/install/lib
+			;;
 		*)
 			echo "Unsupported or unspecified SoC model."
 			;;
@@ -150,10 +167,22 @@ deps() {
 	cd ingenic-musl
 	if [[ "$2" == "-static" ]]; then
 		make CC="${PRUDYNT_CROSS}gcc" -j$(nproc) static
+		make CC="${PRUDYNT_CROSS}gcc" -j$(nproc)
 	else
 		make CC="${PRUDYNT_CROSS}gcc" -j$(nproc)
 	fi
 	cp libmuslshim.* ../install/lib/
+	fi
+	cd $TOP
+
+	echo "import libaudioshim"
+	cd 3rdparty
+	rm -rf libaudioshim
+	if [[ ! -d libaudioshim ]]; then
+	git clone --depth=1 https://github.com/gtxaspec/libaudioshim
+	cd libaudioshim
+		make CC="${PRUDYNT_CROSS}gcc" -j$(nproc)
+	cp libaudioshim.* ../install/lib/
 	fi
 	cd $TOP
 
@@ -162,7 +191,7 @@ deps() {
 	rm -rf faac
 	git clone --depth=1 https://github.com/knik0/faac.git
 	cd faac
-	sed -i 's/^#define MAX_CHANNELS 64/#define MAX_CHANNELS 1/' libfaac/coder.h
+	sed -i 's/^#define MAX_CHANNELS 64/#define MAX_CHANNELS 2/' libfaac/coder.h
 	./bootstrap
 	if [[ "$2" == "-static" ]]; then
 		CC="${PRUDYNT_CROSS}gcc" ./configure --host mipsel-linux-gnu --prefix="$TOP/3rdparty/install" --enable-static --disable-shared
@@ -175,10 +204,13 @@ deps() {
 }
 
 if [ $# -eq 0 ]; then
-	echo "Usage: ./build.sh deps <platform> <-static>"
-	echo "Usage: ./build.sh prudynt <platform> <-static>"
-	echo "Usage: ./build.sh full <platform> <-static>"
-	echo "Platform: T20/T21/T23/T30/T31"
+	echo "Standalone Prudynt Build"
+	echo "Usage: ./build.sh deps <platform> [options]"
+	echo "       ./build.sh prudynt <platform> [options]"
+	echo "       ./build.sh full <platform> [options]"
+	echo ""
+	echo "Platforms: T20, T21, T23, T30, T31, T40, T41"
+	echo "Options:   -static (optional, for static builds)"
 	exit 1
 elif [[ "$1" == "deps" ]]; then
 	deps $2 $3

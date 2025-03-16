@@ -11,6 +11,8 @@
 #include <imp/imp_common.h>
 
 #define WEBSOCKET_TOKEN_LENGTH 32
+#define SESSION_ID_LENGTH 16
+#define ROOT_MAX_LENGTH 16
 
 // WebSocket
 class WS
@@ -44,6 +46,4 @@ private:
         static signed char osd_v2_callback(struct lejp_ctx *ctx, char reason);
         static signed char osd_v2_item_callback(struct lejp_ctx *ctx, char reason);
 };
-
-static uint32_t global_session_id = 0;
 #endif

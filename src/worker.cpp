@@ -7,6 +7,9 @@
 
 using namespace std::chrono;
 
+#define EVENT_SIZE  (sizeof(struct inotify_event))
+#define EVENT_BUF_LEN (1024 * (EVENT_SIZE + 16))
+
 unsigned long long tDiffInMs(struct timeval *startTime)
 {
     struct timeval currentTime;
@@ -29,7 +32,7 @@ static int save_jpeg_stream(int fd, IMPEncoderStream *stream)
         void *data_ptr;
         size_t data_len;
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         IMPEncoderPack *pack = &stream->pack[i];
         uint32_t remSize = 0; // Declare remSize here
         if (pack->length)
@@ -55,7 +58,7 @@ static int save_jpeg_stream(int fd, IMPEncoderStream *stream)
             return -1; // Return error on write failure
         }
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         // Check the condition only under T31 platform, as remSize is used here
         if (remSize && pack->length > remSize)
         {
@@ -85,6 +88,10 @@ void *Worker::jpeg_grabber(void *arg)
      */
     int targetFps = global_jpeg[jpgChn]->stream->jpeg_idle_fps;
 
+    /* do not use the live config variable
+    */
+    global_jpeg[jpgChn]->streamChn = global_jpeg[jpgChn]->stream->jpeg_channel;
+
     uint32_t bps{0}; // Bytes per second
     uint32_t fps{0}; // frames per second
 
@@ -93,8 +100,19 @@ void *Worker::jpeg_grabber(void *arg)
     gettimeofday(&global_jpeg[jpgChn]->stream->stats.ts, NULL);
     global_jpeg[jpgChn]->stream->stats.ts.tv_sec -= 10;
 
+    if (global_jpeg[jpgChn]->streamChn == 0)
+    {
+        cfg->stream2.width = cfg->stream0.width;
+        cfg->stream2.height = cfg->stream0.height;
+    } 
+    else
+    {
+        cfg->stream2.width = cfg->stream1.width;
+        cfg->stream2.height = cfg->stream1.height;        
+    }
+
     global_jpeg[jpgChn]->imp_encoder = IMPEncoder::createNew(
-        global_jpeg[jpgChn]->stream, sh->encChn, global_jpeg[jpgChn]->stream->jpeg_channel, "stream2");
+        global_jpeg[jpgChn]->stream, sh->encChn, global_jpeg[jpgChn]->streamChn, "stream2");
 
     // inform main that initialization is complete
     sh->has_started.release();
@@ -129,17 +147,17 @@ void *Worker::jpeg_grabber(void *arg)
             if (targetFps && diff_last_image >= ((1000 / targetFps) - targetFps / 10))
             {
                 // check if current jpeg channal is running if not start it
-                if (!global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->active)
+                if (!global_video[global_jpeg[jpgChn]->streamChn]->active)
                 {
 
                     /* required video channel was not running, we need to start it
                      * and set run_for_jpeg as a reason.
                      */
                     std::unique_lock<std::mutex> lock_stream{mutex_main};
-                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = true;
-                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->should_grab_frames.notify_one();
+                    global_video[global_jpeg[jpgChn]->streamChn]->run_for_jpeg = true;
+                    global_video[global_jpeg[jpgChn]->streamChn]->should_grab_frames.notify_one();
                     lock_stream.unlock();
-                    global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->is_activated.acquire();
+                    global_video[global_jpeg[jpgChn]->streamChn]->is_activated.acquire();
                 }
 
                 // subscriber is connected
@@ -232,7 +250,7 @@ void *Worker::jpeg_grabber(void *arg)
 
             std::unique_lock<std::mutex> lock_stream{mutex_main};
             global_jpeg[jpgChn]->active = false;
-            global_video[global_jpeg[jpgChn]->stream->jpeg_channel]->run_for_jpeg = false;
+            global_video[global_jpeg[jpgChn]->streamChn]->run_for_jpeg = false;
             while (!global_jpeg[jpgChn]->request_or_overrun() && !global_restart_video)
                 global_jpeg[jpgChn]->should_grab_frames.wait(lock_stream);
 
@@ -266,20 +284,16 @@ void *Worker::stream_grabber(void *arg)
     LOG_DEBUG("Start stream_grabber thread for stream " << encChn);
 
     int ret;
-    int flags{0};
-    uint32_t bps;
-    uint32_t fps;
-    int64_t nal_ts;
-    uint32_t error_count;
-    unsigned long long ms;
-    struct timeval imp_time_base;
+    uint32_t bps = 0;
+    uint32_t fps = 0;
+    uint32_t error_count = 0;
+    unsigned long long ms = 0;
+    bool run_for_jpeg = false;
 
     global_video[encChn]->imp_framesource = IMPFramesource::createNew(global_video[encChn]->stream, &cfg->sensor, encChn);
     global_video[encChn]->imp_encoder = IMPEncoder::createNew(global_video[encChn]->stream, encChn, encChn, global_video[encChn]->name);
     global_video[encChn]->imp_framesource->enable();
-
-    gettimeofday(&imp_time_base, NULL);
-    IMP_System_RebaseTimeStamp(imp_time_base.tv_sec * (uint64_t)1000000);
+    global_video[encChn]->run_for_jpeg = false;
 
     // inform main that initialization is complete
     sh->has_started.release();
@@ -300,7 +314,7 @@ void *Worker::stream_grabber(void *arg)
         /* bool helper to check if this is the active jpeg channel and a jpeg is requested while
          * the channel is inactive
          */
-        bool run_for_jpeg = (encChn == global_jpeg[0]->stream->jpeg_channel && global_video[encChn]->run_for_jpeg);
+        run_for_jpeg = (encChn == global_jpeg[0]->streamChn && global_video[encChn]->run_for_jpeg);
 
         /* now we need to verify that
          * 1. a client is connected (hasDataCallback)
@@ -318,10 +332,12 @@ void *Worker::stream_grabber(void *arg)
                     continue;
                 }
 
+                /* timestamp fix, can be removed if solved
                 int64_t nal_ts = stream.pack[stream.packCount - 1].timestamp;
                 struct timeval encoder_time;
                 encoder_time.tv_sec = nal_ts / 1000000;
                 encoder_time.tv_usec = nal_ts % 1000000;
+                */
 
                 for (uint32_t i = 0; i < stream.packCount; ++i)
                 {
@@ -330,7 +346,7 @@ void *Worker::stream_grabber(void *arg)
 
                     if (global_video[encChn]->hasDataCallback)
                     {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
                         uint8_t *start = (uint8_t *)stream.virAddr + stream.pack[i].offset;
                         uint8_t *end = start + stream.pack[i].length;
 #elif defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -339,15 +355,17 @@ void *Worker::stream_grabber(void *arg)
 #endif
                         H264NALUnit nalu;
 
+                        /* timestamp fix, can be removed if solved
                         nalu.imp_ts = stream.pack[i].timestamp;
                         nalu.time = encoder_time;
+                        */
 
                         // We use start+4 because the encoder inserts 4-byte MPEG
                         //'startcodes' at the beginning of each NAL. Live555 complains
                         nalu.data.insert(nalu.data.end(), start + 4, end);
                         if (global_video[encChn]->idr == false)
                         {
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
                             if (stream.pack[i].nalType.h264NalType == 7 ||
                                 stream.pack[i].nalType.h264NalType == 8 ||
                                 stream.pack[i].nalType.h264NalType == 5)
@@ -396,6 +414,20 @@ void *Worker::stream_grabber(void *arg)
                                     global_video[encChn]->onDataCallback();
                             }
                         }
+#if defined(USE_AUDIO_STREAM_REPLICATOR)
+                        /* Since the audio stream is permanently in use by the stream replicator, 
+                         * and the audio grabber and encoder standby is also controlled by the video threads
+                         * we need to wakeup the audio thread 
+                        */
+                        if(cfg->audio.input_enabled && !global_audio[0]->active && !global_restart)
+                        {
+                            LOG_DDEBUG("NOTIFY AUDIO " << 
+                                !global_audio[0]->active << " " << 
+                                cfg->audio.input_enabled
+                            );                            
+                            global_audio[0]->should_grab_frames.notify_one();
+                        }
+#endif
                     }
                 }
 
@@ -461,8 +493,12 @@ void *Worker::stream_grabber(void *arg)
 
             global_video[encChn]->active = true;
             global_video[encChn]->is_activated.release();
+            
+            // unlock audio
+            global_audio[0]->should_grab_frames.notify_one();
 
-            LOG_DDEBUG("VIDEO UNLOCK" << " channel:" << encChn);
+            LOG_DDEBUG("VIDEO UNLOCK" << 
+                       " channel:" << encChn);           
         }
     }
 
@@ -484,7 +520,7 @@ void *Worker::stream_grabber(void *arg)
     return 0;
 }
 #if defined(AUDIO_SUPPORT)
-static void process_frame(int encChn, IMPAudioFrame &frame)
+static void process_audio_frame(int encChn, IMPAudioFrame &frame)
 {
     int64_t audio_ts = frame.timeStamp;
     struct timeval encoder_time;
@@ -519,12 +555,20 @@ static void process_frame(int encChn, IMPAudioFrame &frame)
         }
     }
 
-    af.data.insert(af.data.end(), start, end);
-    if (global_audio[encChn]->hasDataCallback)
+    if (end > start)
+    {
+        af.data.insert(af.data.end(), start, end);
+    }
+
+    if (!af.data.empty() && global_audio[encChn]->hasDataCallback && (global_video[0]->hasDataCallback || global_video[1]->hasDataCallback))
     {
         if (!global_audio[encChn]->msgChannel->write(af))
         {
+#if defined(USE_AUDIO_STREAM_REPLICATOR)
+            LOG_DDEBUG("audio encChn:" << encChn << ", size:" << af.data.size() << " clogged!");
+#else
             LOG_ERROR("audio encChn:" << encChn << ", size:" << af.data.size() << " clogged!");
+#endif
         }
         else
         {
@@ -532,12 +576,43 @@ static void process_frame(int encChn, IMPAudioFrame &frame)
             if (global_audio[encChn]->onDataCallback)
                 global_audio[encChn]->onDataCallback();
         }
-        // LOG_DEBUG("audio:" <<  global_audio[encChn]->aiChn << " " << af.time.tv_sec << "." << af.time.tv_usec << " " << af.data.size());
     }
 
     if (global_audio[encChn]->imp_audio->format != IMPAudioFormat::PCM && IMP_AENC_ReleaseStream(global_audio[encChn]->aeChn, &stream) < 0)
     {
         LOG_ERROR("IMP_AENC_ReleaseStream(" << global_audio[encChn]->devId << ", " << global_audio[encChn]->aeChn << ", &stream) failed");
+    }
+}
+
+static void process_frame(int encChn, IMPAudioFrame &frame)
+{
+    if (global_audio[encChn]->imp_audio->outChnCnt == 2 && frame.soundmode == AUDIO_SOUND_MODE_MONO) 
+    {
+        size_t sample_size = frame.bitwidth / 8;
+        size_t num_samples = frame.len / sample_size;
+        size_t stereo_size = frame.len * 2;
+        uint8_t* stereo_buffer = new uint8_t[stereo_size];
+        
+        for (size_t i = 0; i < num_samples; i++)
+        {
+            uint8_t* mono_sample = ((uint8_t*)frame.virAddr) + (i * sample_size);
+            uint8_t* stereo_left = stereo_buffer + (i * sample_size * 2);
+            uint8_t* stereo_right = stereo_left + sample_size;
+            memcpy(stereo_left, mono_sample, sample_size);
+            memcpy(stereo_right, mono_sample, sample_size);
+        }
+        
+        IMPAudioFrame stereo_frame = frame;
+        stereo_frame.virAddr = (uint32_t*)stereo_buffer;
+        stereo_frame.len = stereo_size;
+        stereo_frame.soundmode = AUDIO_SOUND_MODE_STEREO;
+        
+        process_audio_frame(encChn, stereo_frame);
+        delete[] stereo_buffer;
+    }
+    else
+    {
+        process_audio_frame(encChn, frame);
     }
 }
 
@@ -571,10 +646,13 @@ void *Worker::audio_grabber(void *arg)
      */
     global_audio[encChn]->active = true;
     global_audio[encChn]->running = true;
+    
     while (global_audio[encChn]->running)
     {
-
-        if (global_audio[encChn]->hasDataCallback && cfg->audio.input_enabled)
+        if (global_audio[encChn]->hasDataCallback && 
+            cfg->audio.input_enabled && 
+            (global_video[0]->hasDataCallback || global_video[1]->hasDataCallback)
+           )
         {
             if (IMP_AI_PollingFrame(global_audio[encChn]->devId, global_audio[encChn]->aiChn, cfg->general.imp_polling_timeout) == 0)
             {
@@ -586,13 +664,13 @@ void *Worker::audio_grabber(void *arg)
 
                 if (reframer)
                 {
-                    std::vector<int16_t> frameData(frame.len / sizeof(int16_t));
-                    std::memcpy(frameData.data(), frame.virAddr, frame.len);
-                    reframer->addFrame(frameData, frame.timeStamp);
+                    reframer->addFrame(reinterpret_cast<uint8_t*>(frame.virAddr), frame.timeStamp);
                     while (reframer->hasMoreFrames())
                     {
+                        size_t frameLen = 1024 * sizeof(uint16_t) * global_audio[encChn]->imp_audio->outChnCnt;
+                        std::vector<uint8_t> frameData(frameLen, 0);
                         int64_t audio_ts;
-                        reframer->getReframedFrame(frameData, audio_ts);
+                        reframer->getReframedFrame(frameData.data(), audio_ts);
                         IMPAudioFrame reframed = {
                             .bitwidth = frame.bitwidth,
                             .soundmode = frame.soundmode,
@@ -600,7 +678,8 @@ void *Worker::audio_grabber(void *arg)
                             .phyAddr = frame.phyAddr,
                             .timeStamp = audio_ts,
                             .seq = frame.seq,
-                            .len = static_cast<int>(frameData.size() * sizeof(int16_t))};
+                            .len = static_cast<int>(frameLen)
+                        };
                         process_frame(encChn, reframed);
                     }
                 }
@@ -619,14 +698,32 @@ void *Worker::audio_grabber(void *arg)
                 LOG_DEBUG(global_audio[encChn]->devId << ", " << global_audio[encChn]->aiChn << " POLLING TIMEOUT");
             }
         }
-        else
+        else if (cfg->audio.input_enabled && !global_restart)
         {
             std::unique_lock<std::mutex> lock_stream{mutex_main};
             global_audio[encChn]->active = false;
-            while (global_audio[encChn]->onDataCallback == nullptr && !global_restart_audio)
-                global_audio[encChn]->should_grab_frames.wait(lock_stream);
+            LOG_DDEBUG("AUDIO LOCK");
 
+            /* Since the audio stream is permanently in use by the stream replicator, 
+             * we send the audio grabber and encoder to standby when no video is requested.
+            */
+            while (
+                (global_audio[encChn]->onDataCallback == nullptr ||
+                (!global_video[0]->hasDataCallback && !global_video[1]->hasDataCallback)) && 
+                !global_restart_audio
+            )
+            {
+                global_audio[encChn]->should_grab_frames.wait(lock_stream);
+            }
             global_audio[encChn]->active = true;
+            LOG_DDEBUG("AUDIO UNLOCK");
+        }
+        else
+        {
+            /* to prevent clogging on startup or while restarting the threads
+             * we wait for 250ms
+            */
+            usleep(250 * 1000);
         }
     } // while (global_audio[encChn]->running)
 
@@ -638,12 +735,12 @@ void *Worker::audio_grabber(void *arg)
     return 0;
 }
 #endif
+
 void *Worker::update_osd(void *arg)
 {
 
     LOG_DEBUG("start osd update thread.");
 
-    bool restart_done = false;
     global_osd_thread_signal = true;
 
     while (global_osd_thread_signal)
@@ -710,4 +807,79 @@ void *Worker::update_osd(void *arg)
 
     LOG_DEBUG("exit osd update thread.");
     return 0;
+}
+
+void *Worker::watch_config_notify(void *arg) 
+{
+    int inotifyFd = inotify_init();
+    if (inotifyFd < 0)
+    {
+        LOG_ERROR("inotify_init() failed");
+        return 0;
+    }
+
+    int watchDescriptor = inotify_add_watch(inotifyFd, cfg->filePath.c_str(), IN_MODIFY | IN_ALL_EVENTS);
+    if (watchDescriptor == -1)
+    {
+        LOG_ERROR("inotify_add_watch() failed");
+        close(inotifyFd);
+        return 0;
+    }
+
+    char buffer[EVENT_BUF_LEN];
+
+    LOG_DEBUG("Monitoring file for changes: " << cfg->filePath);
+
+    while (true)
+    {
+        int length = read(inotifyFd, buffer, EVENT_BUF_LEN);
+        if (length < 0)
+        {
+            LOG_ERROR("Error reading file change notification.");
+            break;
+        }
+
+        int i = 0;
+        while (i < length)
+        {
+            struct inotify_event *event = (struct inotify_event *) &buffer[i];
+
+            if (event->mask & IN_MODIFY)
+            {
+                cfg->load();
+                LOG_INFO("Config file changed, the config is reloaded from: " << cfg->filePath);
+            }
+
+            i += EVENT_SIZE + event->len;
+        }
+    }
+
+    inotify_rm_watch(inotifyFd, watchDescriptor);
+    close(inotifyFd);
+    return 0;
+}
+
+void *Worker::watch_config_poll(void *arg) 
+{
+    struct stat fileInfo;
+    time_t lastModifiedTime = 0;
+
+    while (true)
+    {
+        if (stat(cfg->filePath.c_str(), &fileInfo) == 0)
+        {
+            if (lastModifiedTime == 0)
+            {
+                lastModifiedTime = fileInfo.st_mtime;
+            }
+            else if (fileInfo.st_mtime != lastModifiedTime)
+            {
+                lastModifiedTime = fileInfo.st_mtime;
+                cfg->load();
+                LOG_INFO("Config file changed, the config is reloaded from: " << cfg->filePath);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
 }

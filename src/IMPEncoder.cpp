@@ -3,7 +3,7 @@
 
 #define MODULE "IMPENCODER"
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
 #define IMPEncoderCHNStat IMPEncoderChnStat
 #endif
@@ -57,7 +57,7 @@ void IMPEncoder::initProfile()
     memset(&chnAttr, 0, sizeof(IMPEncoderCHNAttr));
     rcAttr = &chnAttr.rcAttr;
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     IMPEncoderRcMode rcMode = IMP_ENC_RC_MODE_CAPPED_QUALITY;
     IMPEncoderProfile encoderProfile = IMP_ENC_PROFILE_AVC_HIGH;
 
@@ -156,6 +156,8 @@ void IMPEncoder::initProfile()
         // rcAttr->attrRcMode.attrCappedQuality.eRcOptions = IMP_ENC_RC_SCN_CHG_RES | IMP_ENC_RC_OPT_SC_PREVENTION;
         rcAttr->attrRcMode.attrCappedQuality.uMaxPictureSize = stream->bitrate;
         rcAttr->attrRcMode.attrCappedQuality.uMaxPSNR = 42;
+        break;
+    case IMP_ENC_RC_MODE_INVALID:
         break;
     }
 #elif defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -263,6 +265,8 @@ void IMPEncoder::initProfile()
             rcAttr->attrRcMode.attrH264Smart.gopQPStep = 15;
             rcAttr->attrRcMode.attrH264Smart.gopRelation = false;
             break;
+        case ENC_RC_MODE_INV:
+            break;
         }
 #if defined(PLATFORM_T30)
     }
@@ -295,7 +299,7 @@ void IMPEncoder::initProfile()
         "bps:" << stream->bitrate << ", " << 
         "gop:" << stream->gop << ", " << 
         "profile:" << stream->profile << ", " <<
-        "mode:" << rcMode << ", " << 
+//        "mode:" << rcMode << ", " << 
         stream->width << "x" << 
         stream->height);
 }
@@ -308,7 +312,7 @@ int IMPEncoder::init()
 
     initProfile();
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     if (cfg->stream2.enabled && cfg->stream2.jpeg_channel == encChn && stream->allow_shared)
     {
         ret = IMP_Encoder_SetbufshareChn(2, encChn);
@@ -341,12 +345,23 @@ int IMPEncoder::init()
             LOG_DEBUG_OR_ERROR_AND_EXIT(ret, "IMP_System_Bind(&fs, &enc)");
         }
     }
-#if !defined(PLATFORM_T31)
+#if !(defined(PLATFORM_T31) || !defined(PLATFORM_T40) || !defined(PLATFORM_T41))
     else
     {
         IMPEncoderJpegeQl pstJpegeQl;
-        MakeTables(stream->jpeg_quality, &(pstJpegeQl.qmem_table[0]), &(pstJpegeQl.qmem_table[64]));
-        pstJpegeQl.user_ql_en = 1;
+        // fix for bad jpeg image quality on T10 based cameras
+        if(strncmp(cfg->sysinfo.cpu, "T10", 3)==0) 
+        {
+            pstJpegeQl.user_ql_en = 0;
+            LOG_DEBUG("JPEG use default quantization table");
+        }
+        else
+        {
+            MakeTables(stream->jpeg_quality, &(pstJpegeQl.qmem_table[0]), &(pstJpegeQl.qmem_table[64]));
+            pstJpegeQl.user_ql_en = 1;
+            LOG_DEBUG("JPEG use custom user quantization table");
+        }
+
         IMP_Encoder_SetJpegeQl(2, &pstJpegeQl);
     }
 #endif

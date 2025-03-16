@@ -21,6 +21,7 @@ public:
     virtual int open() = 0;
     virtual int encode(IMPAudioFrame* data, unsigned char* outbuf, int* outLen) = 0;
     virtual int close() = 0;
+    virtual ~IMPAudioEncoder() = default;
 };
 
 class IMPAudio
@@ -44,11 +45,15 @@ public:
     int sample_rate;
     IMPAudioFormat format;
 
+    int devId{};
     int inChn{};
     int aeChn{};
-    int devId{};
+    int outChnCnt = 1;
 
 private:
+    bool enabledAgc = false;
+    bool enabledHpf = false;
+    bool enabledNs = false;
     int handle = 0;
     const char *name{};
     _stream *stream{};

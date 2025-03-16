@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'true'
-  
+
       - name: Setup cache directories
         run: |
           mkdir -p /tmp/ccache
@@ -68,8 +68,8 @@ jobs:
 
       - name: Download toolchain
         run: |
-          wget https://github.com/themactep/thingino-firmware/releases/download/toolchain/thingino-toolchain_xburst1_musl_gcc13-linux-mipsel.tar.gz
-          tar -xf thingino-toolchain_xburst1_musl_gcc13-linux-mipsel.tar.gz
+          wget https://github.com/themactep/thingino-firmware/releases/download/toolchain/thingino-toolchain_xburst1_musl_gcc14-linux-mipsel.tar.gz
+          tar -xf thingino-toolchain_xburst1_musl_gcc14-linux-mipsel.tar.gz
           cd mipsel-thingino-linux-musl_sdk-buildroot; ./relocate-sdk.sh
           cd ../
 
@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload binary to release
         if: github.event_name != 'pull_request'
-        uses: softprops/action-gh-release@master
+        uses: softprops/action-gh-release@v2.1.0
         with:
           tag_name: ${{ env.TAG_NAME }}
           files: |

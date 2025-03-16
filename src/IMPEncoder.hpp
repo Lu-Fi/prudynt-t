@@ -8,7 +8,7 @@
 #include <imp/imp_encoder.h>
 #include <imp/imp_system.h>
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #define IMPEncoderCHNAttr IMPEncoderChnAttr
 #define IMPEncoderCHNStat IMPEncoderChnStat
 #endif
@@ -36,7 +36,11 @@ class IMPEncoder
 public:
     static IMPEncoder *createNew(_stream *stream, int encChn, int encGrp, const char *name);
 
-    IMPEncoder(_stream *stream, int encChn, int encGrp, const char *name) : stream(stream), encChn(encChn), encGrp(encGrp), name(name)
+    IMPEncoder(_stream *stream, int encChn, int encGrp, const char *name) : 
+        name(name), 
+        stream(stream), 
+        encChn(encChn), 
+        encGrp(encGrp)
     {
         init();
     }

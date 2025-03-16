@@ -21,6 +21,8 @@ private:
     UsageEnvironment *env{};
     TaskScheduler *scheduler{};
     RTSPServer *rtspServer{};
+    int audioChn = 0;
+    IMPDeviceSource<AudioFrame, audio_stream> * audioSource = nullptr;
 };
 
 #endif

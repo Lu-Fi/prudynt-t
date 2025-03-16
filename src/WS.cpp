@@ -25,7 +25,6 @@ using namespace std::filesystem;
 /*
     ToDo's
     add new font scales
-    add new font stroke
     add stream buffer sharing
 */
 
@@ -253,7 +252,9 @@ enum
     PNT_STREAM_AUDIO_ENABLED,
     PNT_STREAM_SCALE_ENABLED,
     PNT_STREAM_RTSP_ENDPOINT,
+    PNT_STREAM_RTSP_INFO,
     PNT_STREAM_FORMAT,
+    PNT_STREAM_MODE,
     PNT_STREAM_GOP,
     PNT_STREAM_MAX_GOP,
     PNT_STREAM_FPS,
@@ -264,6 +265,7 @@ enum
     PNT_STREAM_ROTATION,
     PNT_STREAM_SCALE_WIDTH,
     PNT_STREAM_SCALE_HEIGHT,
+    PNT_STREAM_PROFILE,
     PNT_STREAM_STATS,
     PNT_STREAM_OSD
 };
@@ -273,7 +275,9 @@ static const char *const stream_keys[] = {
     "audio_enabled",
     "scale_enabled",
     "rtsp_endpoint",
+    "rtsp_info",
     "format",
+    "mode",
     "gop",
     "max_gop",
     "fps",
@@ -284,6 +288,7 @@ static const char *const stream_keys[] = {
     "rotation",
     "scale_width",
     "scale_height",
+    "profile",
     "stats",
     "osd"};
 
@@ -319,7 +324,7 @@ enum
     PNT_OSD_TIME_FORMAT,
     PNT_OSD_UPTIME_FORMAT,
     PNT_OSD_FONT_COLOR,
-    PNT_OSD_FONT_STROKE_COLOR,
+    PNT_OSD_FONT_STROKE_COLOR
 };
 
 static const char *const osd_keys[] = {
@@ -366,6 +371,7 @@ enum
     PNT_MOTION_POST_TIME,
     PNT_MOTION_COOLDOWN_TIME,
     PNT_MOTION_INIT_TIME,
+    PNT_MOTION_MIN_TIME,
     PNT_MOTION_THREAD_WAIT,
     PNT_MOTION_SENSITIVITY,
     PNT_MOTION_SKIP_FRAME_COUNT,
@@ -386,6 +392,7 @@ static const char *const motion_keys[] = {
     "post_time",
     "cooldown_time",
     "init_time",
+    "min_time",
     "thread_wait",
     "sensitivity",
     "skip_frame_count",
@@ -444,12 +451,12 @@ struct snapshot_info
 
 struct user_ctx
 {
-    std::string id;   // session id
-    struct lws *wsi;  // libwebsockets handle
-    std::string root; // json root path
-    std::string path; // json sub path
-    int value;        // to use a number in the JSON parser e.g. encChn (encoder channel)
-    int flag;         // bitmask info store e.g. JSON separator (“,”) or thread restart
+    char id[SESSION_ID_LENGTH + 1]; // +1 for null terminator
+    struct lws *wsi;                // libwebsockets handle
+    char root[ROOT_MAX_LENGTH];     // json root path (replaced std::string)
+    std::string path;               // json sub path
+    int value;                      // to use a number in the JSON parser e.g. encChn (encoder channel)
+int flag;                           // bitmask info store e.g. JSON separator (","") or thread restart
     roi region;
     int midx;
     int vidx;
@@ -460,26 +467,36 @@ struct user_ctx
     lws_sorted_usec_list_t sul; // lws Soft Timer
     struct snapshot_info snapshot;
     void *obj_ptr{nullptr};
+
+    user_ctx(const char* session_id, lws *wsi_handle)
+        : wsi(wsi_handle), value(0), flag(0),
+          region(), midx(0), vidx(0), post_data_size(0), rx_message(), tx_message(),
+          message(), sul(), snapshot()
+    {
+        strncpy(id, session_id, SESSION_ID_LENGTH);
+        id[SESSION_ID_LENGTH] = '\0';
+        root[0] = '\0';  // Initialize root as empty string
+    }
 };
 
-std::string generateToken(int length)
+const char* generateToken(int length) 
 {
     static const char characters[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    static const int maxIndex = sizeof(characters) - 1;
+    static const int maxIndex = sizeof(characters) - 1;  
+    static char tokenBuffer[WEBSOCKET_TOKEN_LENGTH + 1];
 
     std::random_device rd;
     std::mt19937 generator(rd());
     std::uniform_int_distribution<> distribution(0, maxIndex);
 
-    std::string randomString;
-    randomString.reserve(length);
-
-    for (int i = 0; i < length; i++)
+    // Generate random characters
+    for (int i = 0; i < length; i++) 
     {
-        randomString += characters[distribution(generator)];
+        tokenBuffer[i] = characters[distribution(generator)];
     }
+    tokenBuffer[length] = '\0';  // Ensure null termination
 
-    return randomString;
+    return tokenBuffer;
 }
 
 int restart_threads_by_signal(int &flag)
@@ -527,7 +544,7 @@ bool get_snapshot(std::vector<unsigned char> &image)
     std::ifstream file(global_jpeg[0]->stream->jpeg_path, std::ios::binary);
     if (!file.is_open())
     {
-        LOG_DDEBUG(strerror(errno));
+        LOG_DDEBUGWS(strerror(errno));
         return false;
     }
 
@@ -590,13 +607,25 @@ void add_json_key(std::string &message, bool separator, const char *key, const c
         message, "%s\"%s\":%s", separator ? "," : "", key, opener);
 }
 
+// Helper function to safely combine path components
+void combine_path(std::string& result, const char* root, const char* path) {
+    result = root;
+    result += ".";
+    result += path;
+}
+
+// For stream comparisons, replace direct string comparisons with strcmp
+bool is_stream(const char* root, const char* stream_name) {
+    return strcmp(root, stream_name) == 0;
+}
+
 signed char WS::general_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
 
     if ((reason & LEJP_FLAG_CB_IS_VALUE) && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), general_keys[ctx->path_match - 1]);
 
@@ -644,7 +673,7 @@ signed char WS::rtsp_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), rtsp_keys[ctx->path_match - 1]);
 
@@ -721,7 +750,7 @@ signed char WS::sensor_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), sensor_keys[ctx->path_match - 1]);
 
@@ -764,9 +793,10 @@ signed char WS::image_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
 
+#if !defined(NO_TUNINGS)
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), image_keys[ctx->path_match - 1]);
 
@@ -1046,7 +1076,7 @@ signed char WS::image_callback(struct lejp_ctx *ctx, char reason)
         u_ctx->message.append("}");
         lejp_parser_pop(ctx);
     }
-
+#endif
     return 0;
 }
 
@@ -1057,7 +1087,7 @@ signed char WS::audio_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), audio_keys[ctx->path_match - 1]);
 
@@ -1100,7 +1130,7 @@ signed char WS::audio_callback(struct lejp_ctx *ctx, char reason)
             }
             add_json_num(u_ctx->message, cfg->get<int>(u_ctx->path));
         }
-#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T31) | defined(PLATFORM_T40) | defined(PLATFORM_T41)
         else if (ctx->path_match == PNT_AUDIO_INPUT_AGC_ENABLED)
         {
             IMPAudioIOAttr ioattr;
@@ -1181,7 +1211,7 @@ signed char WS::audio_callback(struct lejp_ctx *ctx, char reason)
                 add_json_num(u_ctx->message, cfg->get<int>(u_ctx->path));
                 break;
             case PNT_AUDIO_INPUT_ALC_GAIN:
-#if defined(PLATFORM_T21) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T31) //|| defined(PLATFORM_T40) || defined(PLATFORM_T41)
                 if (reason == LEJPCB_VAL_NUM_INT)
                 {
                     if (cfg->set<int>(u_ctx->path, atoi(ctx->buf)))
@@ -1219,7 +1249,7 @@ signed char WS::audio_callback(struct lejp_ctx *ctx, char reason)
 signed char WS::stream_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
-    u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+    combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
@@ -1227,7 +1257,7 @@ signed char WS::stream_callback(struct lejp_ctx *ctx, char reason)
 
         u_ctx->flag |= PNT_FLAG_SEPARATOR;
 
-        if (ctx->path_match >= PNT_STREAM_GOP && ctx->path_match <= PNT_STREAM_SCALE_HEIGHT)
+        if (ctx->path_match >= PNT_STREAM_GOP && ctx->path_match <= PNT_STREAM_PROFILE)
         { // integer values
             if (reason == LEJPCB_VAL_NUM_INT)
                 cfg->set<int>(u_ctx->path, atoi(ctx->buf));
@@ -1254,6 +1284,11 @@ signed char WS::stream_callback(struct lejp_ctx *ctx, char reason)
                     cfg->set<const char *>(u_ctx->path, strdup(ctx->buf));
                 add_json_str(u_ctx->message, cfg->get<const char *>(u_ctx->path));
                 break;
+            case PNT_STREAM_RTSP_INFO:
+                if (reason == LEJPCB_VAL_STR_END)
+                    cfg->set<const char *>(u_ctx->path, strdup(ctx->buf));
+                add_json_str(u_ctx->message, cfg->get<const char *>(u_ctx->path));
+                break;                
             case PNT_STREAM_SCALE_ENABLED:
                 if (reason == LEJPCB_VAL_TRUE)
                 {
@@ -1270,17 +1305,22 @@ signed char WS::stream_callback(struct lejp_ctx *ctx, char reason)
                     cfg->set<const char *>(u_ctx->path, strdup(ctx->buf));
                 add_json_str(u_ctx->message, cfg->get<const char *>(u_ctx->path));
                 break;
+            case PNT_STREAM_MODE:
+                if (reason == LEJPCB_VAL_STR_END)
+                    cfg->set<const char *>(u_ctx->path, strdup(ctx->buf));
+                add_json_str(u_ctx->message, cfg->get<const char *>(u_ctx->path));
+                break;                
             case PNT_STREAM_STATS:
                 if (reason == LEJPCB_VAL_NULL)
                 {
                     uint8_t fps = 0;
                     uint32_t bps = 0;
-                    if (u_ctx->root == "stream0")
+                    if (is_stream(u_ctx->root, "stream0"))
                     {
                         fps = cfg->stream0.stats.fps;
                         bps = cfg->stream0.stats.bps;
                     }
-                    else if (u_ctx->root == "stream1")
+                    else if (is_stream(u_ctx->root, "stream1"))
                     {
                         fps = cfg->stream1.stats.fps;
                         bps = cfg->stream1.stats.bps;
@@ -1320,7 +1360,7 @@ signed char WS::stream2_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), stream2_keys[ctx->path_match - 1]);
 
@@ -1380,7 +1420,7 @@ signed char WS::stream2_callback(struct lejp_ctx *ctx, char reason)
             {
                 uint8_t fps = 0;
                 uint32_t bps = 0;
-                if (u_ctx->root == "stream2")
+                if (is_stream(u_ctx->root, "stream2"))
                 {
                     fps = cfg->stream2.stats.fps;
                     bps = cfg->stream2.stats.bps;
@@ -1396,6 +1436,7 @@ signed char WS::stream2_callback(struct lejp_ctx *ctx, char reason)
     }
     else if (reason == LEJPCB_OBJECT_END)
     {
+        u_ctx->flag |= PNT_FLAG_SEPARATOR;
         u_ctx->message.append("}");
         lejp_parser_pop(ctx);
     }
@@ -1409,7 +1450,9 @@ signed char WS::osd_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + ".osd." + std::string(ctx->path);
+        u_ctx->path = u_ctx->root;
+        u_ctx->path += ".osd.";
+        u_ctx->path += ctx->path;
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), osd_keys[ctx->path_match - 1]);
 
@@ -1476,7 +1519,7 @@ signed char WS::osd_callback(struct lejp_ctx *ctx, char reason)
 signed char WS::motion_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
-    u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+    combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
@@ -1556,7 +1599,7 @@ signed char WS::motion_callback(struct lejp_ctx *ctx, char reason)
 signed char WS::motion_roi_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
-    u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+    combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
     if ((reason & LEJP_FLAG_CB_IS_VALUE) && (reason == LEJPCB_VAL_NULL))
     {
@@ -1670,8 +1713,8 @@ signed char WS::info_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
-
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
+        
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), info_keys[ctx->path_match - 1]);
 
         u_ctx->flag |= PNT_FLAG_SEPARATOR;
@@ -1713,7 +1756,7 @@ signed char WS::action_callback(struct lejp_ctx *ctx, char reason)
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
-        u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+        combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), action_keys[ctx->path_match - 1]);
 
@@ -1730,7 +1773,7 @@ signed char WS::action_callback(struct lejp_ctx *ctx, char reason)
 
                 if (thread_restart & PNT_THREAD_RTSP)
                 {
-                    restart_flag |= PNT_FLAG_RESTART_RTSP;
+                    restart_flag |= PNT_FLAG_RESTART_RTSP | PNT_FLAG_RESTART_VIDEO | PNT_FLAG_RESTART_AUDIO;
                 }
                 if (thread_restart & PNT_THREAD_VIDEO)
                 {
@@ -1786,7 +1829,7 @@ signed char WS::action_callback(struct lejp_ctx *ctx, char reason)
 signed char WS::osd_v2_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
-    u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
+    combine_path(u_ctx->path, u_ctx->root, ctx->path);
 
     if (reason & LEJP_FLAG_CB_IS_VALUE && ctx->path_match)
     {
@@ -1816,8 +1859,9 @@ signed char WS::osd_v2_callback(struct lejp_ctx *ctx, char reason)
 signed char WS::osd_v2_item_callback(struct lejp_ctx *ctx, char reason)
 {
     struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
-    u_ctx->path = u_ctx->root + "." + std::string(ctx->path);
-    OsdConfigItem *osdConfigItem;
+    combine_path(u_ctx->path, u_ctx->root, ctx->path);
+
+    OsdConfigItem *osdConfigItem = nullptr;
 
     size_t len = strlen(ctx->path);
     char *path = new char[len + 1];
@@ -2027,7 +2071,8 @@ signed char WS::root_callback(struct lejp_ctx *ctx, char reason)
     {
         struct user_ctx *u_ctx = (struct user_ctx *)ctx->user;
         u_ctx->path.clear();
-        u_ctx->root = ctx->path;
+        strncpy(u_ctx->root, ctx->path, sizeof(u_ctx->root) - 1);  // Copy path safely
+        u_ctx->root[sizeof(u_ctx->root) - 1] = '\0';  // Ensure null termination
 
         add_json_key(u_ctx->message, (u_ctx->flag & PNT_FLAG_SEPARATOR), root_keys[ctx->path_match - 1], "{");
 
@@ -2096,23 +2141,28 @@ signed char WS::root_callback(struct lejp_ctx *ctx, char reason)
     return 0;
 }
 
-std::string generateSessionID()
+const char* generateSessionID() 
 {
+    static char idBuffer[SESSION_ID_LENGTH + 1];
     std::random_device rd;
-    std::mt19937_64 eng(rd());
-    std::uniform_int_distribution<uint64_t> distr;
-    uint64_t randomValue = distr(eng);
-    auto timeStamp = std::time(nullptr);
-    std::stringstream ss;
-    ss << std::hex << randomValue << timeStamp;
-    return ss.str();
+    std::mt19937 eng(rd());
+    std::uniform_int_distribution<uint32_t> distr;
+    
+    uint32_t randomValue = distr(eng);
+    uint32_t timeStamp = (uint32_t)std::time(nullptr);
+    
+    // Format: 8 chars from random + 8 chars from timestamp
+    snprintf(idBuffer, sizeof(idBuffer), "%08x%08x", 
+             randomValue, timeStamp);
+    
+    return idBuffer;
 }
 
 static void
 send_snapshot(lws_sorted_usec_list_t *sul)
 {
     struct user_ctx *u_ctx = lws_container_of(sul, struct user_ctx, sul);
-    LOG_DDEBUG("process shedule. id:" << u_ctx->id);
+    LOG_DDEBUGWS("process shedule. id:" << u_ctx->id);
     u_ctx->flag |= PNT_FLAG_WS_SEND_PREVIEW;
     lws_callback_on_writable(u_ctx->wsi);
 }
@@ -2125,16 +2175,13 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
     char client_ip[128];
     lws_get_peer_simple(wsi, client_ip, sizeof(client_ip));
 
-    char *url_ptr;
-    int url_length;
-    int request_method;
+    char *url_ptr = nullptr;
+    int url_length = 0;
+    int request_method = 0;
 
     // security token ?token=
     char url_token[128]{0};
     char content_type[128]{0};
-    std::string json_data((char *)in, len);
-
-    // LOG_DDEBUG(reason);
 
     // get url and method
     if (reason >= LWS_CALLBACK_HTTP && reason <= LWS_CALLBACK_HTTP_WRITEABLE)
@@ -2147,10 +2194,11 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
     {
     // ############################ WEBSOCKET ###############################
     case LWS_CALLBACK_ESTABLISHED:
-        LOG_DDEBUG("LWS_CALLBACK_ESTABLISHED id:" << u_ctx->id << ", ip:" << client_ip);
+        LOG_DDEBUGWS("LWS_CALLBACK_ESTABLISHED id:" << u_ctx->id << ", ip:" << client_ip);
 
         // check if security is required and validate token
         url_length = lws_get_urlarg_by_name_safe(wsi, "token", url_token, sizeof(url_token));
+        LOG_DEBUG("url_token: " << url_token);
         if (strcmp(token, url_token) == 0 || (strcmp(cfg->websocket.usertoken, "") != 0 && strcmp(cfg->websocket.usertoken, url_token) == 0))
         {
             /* initialize new u_ctx session structure.
@@ -2170,7 +2218,12 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         break;
 
     case LWS_CALLBACK_RECEIVE:
-        LOG_DDEBUG("LWS_CALLBACK_RECEIVE " << " id:" << u_ctx->id << " ,flag:" << u_ctx->flag << " ,ip:" << client_ip << " ,len:" << len << " ,last:" << lws_is_final_fragment(wsi));
+        LOG_DDEBUGWS("LWS_CALLBACK_RECEIVE " << 
+            " id:" << u_ctx->id << 
+            " ,flag:" << u_ctx->flag << 
+            " ,ip:" << client_ip << 
+            " ,len:" << len << 
+            " ,last:" << lws_is_final_fragment(wsi));
 
         /* larger requests can be segmented into several requests,
          * so we have to collect all the data until we reach the last segment.
@@ -2179,12 +2232,12 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         if (lws_is_first_fragment(wsi))
             u_ctx->rx_message.clear();
 
-        u_ctx->rx_message.append(json_data);
+        u_ctx->rx_message.append((char *)in, len);
 
         if (!lws_is_final_fragment(wsi))
             return 0;
 
-        LOG_DDEBUG("u_ctx->rx_message: id:" << u_ctx->id << ", rx:" << u_ctx->rx_message);
+        LOG_DDEBUGWS("u_ctx->rx_message: id:" << u_ctx->id << ", rx:" << u_ctx->rx_message);
 
         // set request pending
         // u_ctx->flag |= PNT_FLAG_WS_REQUEST_PENDING;
@@ -2213,9 +2266,8 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
             u_ctx->flag &= ~PNT_FLAG_WS_REQUEST_PREVIEW;
 
             // drop overlapping image requests
-            if (u_ctx->flag & PNT_FLAG_WS_PREVIEW_PENDING)
-            {
-                LOG_DDEBUG("drop overlapping image request. id:" << u_ctx->id);
+            if (u_ctx->flag & PNT_FLAG_WS_PREVIEW_PENDING) {
+                LOG_DDEBUGWS("drop overlapping image request. id:" << u_ctx->id);
                 return 0;
             };
 
@@ -2269,11 +2321,11 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
                     u_ctx->snapshot.throttle = 1;
                 }
 
-                LOG_DDEBUG("RPS: " << u_ctx->snapshot.rps << " " << u_ctx->snapshot.throttle << " " << dur);
+                LOG_DDEBUGWS("RPS: " << u_ctx->snapshot.rps << " " << u_ctx->snapshot.throttle << " " << dur);
             }
 
             int delay = (LWS_USEC_PER_SEC / (global_jpeg[0]->stream->stats.fps + u_ctx->snapshot.throttle)) + first_request_delay;
-            LOG_DDEBUG("shedule preview image. id:" << u_ctx->id << " delay:" << delay);
+            LOG_DDEBUGWS("shedule preview image. id:" << u_ctx->id << " delay:" << delay);
             lws_sul_schedule(lws_get_context(wsi), 0, &u_ctx->sul, send_snapshot, delay);
 
             // send response for the image request
@@ -2291,7 +2343,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         break;
 
     case LWS_CALLBACK_SERVER_WRITEABLE:
-        LOG_DDEBUG("LWS_CALLBACK_SERVER_WRITEABLE id:" << u_ctx->id << ", ip:" << client_ip);
+        LOG_DDEBUGWS("LWS_CALLBACK_SERVER_WRITEABLE id:" << u_ctx->id << ", ip:" << client_ip);
 
         // send response message
         if (!u_ctx->tx_message.empty())
@@ -2306,9 +2358,9 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
             std::stringstream ss(u_ctx->tx_message);
             std::string item;
 
-            while (std::getline(ss, item, ';'))
+            while (std::getline(ss, item, ';')) 
             {
-                LOG_DDEBUG("u_ctx->tx_message id:" << u_ctx->id << ", tx:" << item);
+                LOG_DDEBUGWS("u_ctx->tx_message id:" << u_ctx->id << ", tx:" << item);
                 item = std::string(LWS_PRE, '\0') + item;
                 lws_write(wsi, (unsigned char *)item.c_str() + LWS_PRE, item.length() - LWS_PRE, LWS_WRITE_TEXT);
             }
@@ -2319,7 +2371,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         // delayed snapshot request via websocket, sending the image
         if (u_ctx->flag & PNT_FLAG_WS_SEND_PREVIEW)
         {
-            LOG_DDEBUG("send preview image. id:" << u_ctx->id);
+            LOG_DDEBUGWS("send preview image. id:" << u_ctx->id);
             global_jpeg[0]->request();
             std::vector<unsigned char> jpeg_buf;
             if (get_snapshot(jpeg_buf))
@@ -2331,7 +2383,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         break;
 
     case LWS_CALLBACK_CLOSED:
-        LOG_DDEBUG("LWS_CALLBACK_CLOSED id:" << u_ctx->id << ", ip:" << client_ip << ", flag:" << u_ctx->flag);
+        LOG_DDEBUGWS("LWS_CALLBACK_CLOSED id:" << u_ctx->id << ", ip:" << client_ip << ", flag:" << u_ctx->flag);
 
         // cleanup delete possibly existing shedules for this session
         lws_sul_cancel(&u_ctx->sul);
@@ -2341,7 +2393,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
 
     // ############################ HTTP ###############################
     case LWS_CALLBACK_HTTP:
-        LOG_DDEBUG("LWS_CALLBACK_HTTP ip:" << client_ip << " url:" << (char *)url_ptr << " method:" << request_method);
+        LOG_DDEBUGWS("LWS_CALLBACK_HTTP ip:" << client_ip << " url:" << (char *)url_ptr << " method:" << request_method);
 
         // check if security is required and validate token
         url_length = lws_get_urlarg_by_name_safe(wsi, "token", url_token, sizeof(url_token));
@@ -2359,11 +2411,10 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
             if (cfg->websocket.http_secured)
             {
                 LOG_DEBUG("Connection refused.");
-                if (lws_return_http_status(wsi,
-                                           HTTP_STATUS_FORBIDDEN, NULL) ||
-                    lws_http_transaction_completed(wsi))
-                    ;
-                return -1;
+                if (lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, NULL) ||
+                    lws_http_transaction_completed(wsi)) {
+                    return -1;
+                }
             }
         }
 
@@ -2418,12 +2469,12 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         break;
 
     case LWS_CALLBACK_HTTP_BODY:
-        LOG_DDEBUG("LWS_CALLBACK_HTTP_BODY ip:" << client_ip);
-        u_ctx->rx_message.append(json_data);
+        LOG_DDEBUGWS("LWS_CALLBACK_HTTP_BODY ip:" << client_ip);
+        u_ctx->rx_message.append((char *)in, len);
         break;
 
-    case LWS_CALLBACK_HTTP_BODY_COMPLETION: // LWS_CALLBACK_HTTP_BODY:
-        LOG_DDEBUG("LWS_CALLBACK_HTTP_BODY ip:" << client_ip << ", data:" << u_ctx->rx_message);
+    case LWS_CALLBACK_HTTP_BODY_COMPLETION: //LWS_CALLBACK_HTTP_BODY:
+        LOG_DDEBUGWS("LWS_CALLBACK_HTTP_BODY ip:" << client_ip << ", data:" << u_ctx->rx_message);
 
         if (u_ctx->flag & PNT_FLAG_HTTP_RECEIVED_MESSAGE)
         {
@@ -2451,7 +2502,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         break;
 
     case LWS_CALLBACK_HTTP_WRITEABLE:
-        LOG_DDEBUG("LWS_CALLBACK_HTTP_WRITEABLE ip:" << client_ip << " " << (int)u_ctx->flag);
+        LOG_DDEBUGWS("LWS_CALLBACK_HTTP_WRITEABLE ip:" << client_ip << " " << (int)u_ctx->flag);
 
         {
             uint8_t header[LWS_PRE + 1024];
@@ -2487,10 +2538,10 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
             if (u_ctx->flag & PNT_FLAG_HTTP_SEND_MESSAGE)
             {
                 u_ctx->flag &= ~PNT_FLAG_HTTP_SEND_MESSAGE;
-                LOG_DDEBUG("/json " << u_ctx->flag);
+                LOG_DDEBUGWS("/json " << u_ctx->flag);
                 if (!u_ctx->message.empty())
                 {
-                    LOG_DDEBUG("TO " << client_ip << ":  " << u_ctx->message);
+                    LOG_DDEBUGWS("TO " << client_ip << ":  " << u_ctx->message);
 
                     // Prepare the HTTP headers
                     if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK, "application/json", u_ctx->message.length(), &p, end) ||
@@ -2522,7 +2573,7 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
         break;
 
     case LWS_CALLBACK_HTTP_DROP_PROTOCOL:
-        LOG_DDEBUG("LWS_CALLBACK_HTTP_DROP_PROTOCOL ip:" << client_ip << ", id:" << u_ctx->id);
+        LOG_DDEBUGWS("LWS_CALLBACK_HTTP_DROP_PROTOCOL ip:" << client_ip << ", id:" << u_ctx->id);
         u_ctx->~user_ctx();
         break;
 
@@ -2535,18 +2586,18 @@ int WS::ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *use
 
 void WS::start()
 {
-    int opt;
     char *ip = NULL;
 
     // create websocket authentication token and write it into /run/
     // only websocket connect with token parameter accepted
     // ws://<ip>:<port>/?token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-    strncpy(token, strdup(generateToken(WEBSOCKET_TOKEN_LENGTH).c_str()), WEBSOCKET_TOKEN_LENGTH);
+    std::string generatedToken = generateToken(WEBSOCKET_TOKEN_LENGTH);
+    memset(token, 0, sizeof(token));  // Clear the token buffer first
+    memcpy(token, generatedToken.c_str(), std::min(generatedToken.length(), (size_t)WEBSOCKET_TOKEN_LENGTH));
     std::ofstream outFile("/run/prudynt_websocket_token");
     outFile << token;
     outFile.close();
-
-    LOG_DEBUG("WS TOKEN::" << token);
+    LOG_DEBUG("Generated token length: " << generatedToken.length() << ", Token: '" << token << "'");
 
     lws_set_log_level(cfg->websocket.loglevel, lwsl_emit_stderr);
 

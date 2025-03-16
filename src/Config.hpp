@@ -14,13 +14,18 @@
 //~65k
 #define ENABLE_LOG_DEBUG
 
-// Some more debug output not usefull for users (Developer Debug)
-// #define DDEBUG
+//Some more debug output not usefull for users (Developer Debug)
+//#define DDEBUG
+//#define DDEBUGWS
+
+// under development
+//#define USE_STEREO_SIMULATOR
 
 // enable audio support
 #define AUDIO_SUPPORT
 // enable audio processing library
 #define LIB_AUDIO_PROCESSING
+#define USE_AUDIO_STREAM_REPLICATOR
 
 // disable tunings (debugging)
 // #define NO_TUNINGS
@@ -32,7 +37,7 @@
 #define THREAD_SLEEP 25000
 #define GET_STREAM_BLOCKING false
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     #define DEFAULT_ENC_MODE_0 "FIXQP"
     #define DEFAULT_ENC_MODE_1 "CAPPED_QUALITY"
     #define DEFAULT_BUFFERS_0 4
@@ -146,9 +151,9 @@ struct ConfigItem
     const char *path;
     T &value;
     T defaultValue;
-    std::function<bool(const T &)> validate;
-    bool noSave;
-    const char *procPath;
+    std::function<bool(const T&)> validate;
+    bool noSave = false;
+    const char *procPath = nullptr;
 };
 
 struct _stream_stats
@@ -171,6 +176,7 @@ struct _rtsp
     int est_bitrate;
     int out_buffer_size;
     int send_buffer_size;
+    int session_reclaim;;
     bool auth_required;
     const char *username;
     const char *password;
@@ -225,13 +231,13 @@ struct _audio
     bool input_agc_enabled;
     int input_agc_target_level_dbfs;
     int input_agc_compression_gain_db;
+    bool force_stereo;
 #endif
 };
 #endif
 struct _osd
 {
     int font_size;
-    int font_stroke_size;
     int font_xscale;
     int font_yscale;
     int font_stroke;
@@ -266,6 +272,7 @@ struct _stream
     bool allow_shared;
     const char *mode;
     const char *rtsp_endpoint;
+    const char *rtsp_info;
     const char *format{"JPEG"};
     /* JPEG stream*/
     int jpeg_quality;
@@ -286,6 +293,7 @@ struct _motion
     int post_time;
     int cooldown_time;
     int init_time;
+    int min_time;
     int ivs_polling_timeout;
     int sensitivity;
     int skip_frame_count;
@@ -311,6 +319,9 @@ struct _websocket
     const char *name;
     const char *usertoken{""};
 };
+struct _sysinfo {
+    const char *cpu = nullptr;
+};
 
 class CFG
 {
@@ -319,11 +330,11 @@ public:
     libconfig::Config lc{};
     std::string filePath{};
 
-    CFG();
-    void load();
-    static CFG *createNew();
-    bool readConfig();
-    bool updateConfig();
+		CFG();
+        void load();
+        static CFG *createNew();
+        bool readConfig();
+        bool updateConfig();
 
 #if defined(AUDIO_SUPPORT)
     _audio audio{};
@@ -337,7 +348,9 @@ public:
     _stream stream2{};
     _motion motion{};
     _websocket websocket{};
+    _sysinfo sysinfo{};
 
+    _osd osd{};
     int numOsdConfigItems{0};
     OsdConfigItem *osdConfigItems;
     
@@ -376,9 +389,8 @@ public:
     }
 
     template <typename T>
-    T get(const std::string &name)
-    {
-        T result;
+    T get(const std::string &name) {
+        T result = T{};
         std::vector<ConfigItem<T>> *items = nullptr;
         if constexpr (std::is_same_v<T, bool>)
         {
