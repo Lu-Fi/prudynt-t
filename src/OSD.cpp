@@ -616,6 +616,8 @@ void OSD::init()
         grpRgnAttr.gAlphaEn = 1;
         grpRgnAttr.fgAlhpa = osd.user_text_transparency;
         IMP_OSD_SetGrpRgnAttr(osdUser.imp_rgn, osdGrp, &grpRgnAttr);
+
+        osdUser.isStatic = (strstr(osd.user_text_format, "%") == nullptr);
     }
 
     if (osd.uptime_enabled)
@@ -824,6 +826,8 @@ void OSD::updateDisplayEverySecond()
             }
 
             // Format and update user text
+            if (osdUser.isStatic == false)
+            {
             if ((flag & 2) && osd.user_text_enabled)
             {
                 std::string user_text = osd.user_text_format;
@@ -837,6 +841,18 @@ void OSD::updateDisplayEverySecond()
                 {
                     replace(user_text, "%ipaddress", ip);
                 }
+
+                    if (strstr(osd.user_text_format, "%gain") != nullptr)
+                    {
+                        uint32_t sgain = 0;
+                        int ret = IMP_ISP_Tuning_GetTotalGain(&sgain);
+                        if (ret == 0)
+                        {
+                            char gain[12];
+                            snprintf(gain, sizeof(gain), "%u", sgain);
+                            replace(user_text, "%gain", gain);
+                        }
+                    }
 
                 if (strstr(osd.user_text_format, "%fps") != nullptr)
                 {
@@ -860,8 +876,12 @@ void OSD::updateDisplayEverySecond()
                 flag ^= 2;
                 return;
             }
+            } else {
 
-            // Format and update uptime
+                flag ^= 2;
+            }
+
+             // Format and update uptime / gain
             if ((flag & 4) && osd.uptime_enabled)
             {
                 unsigned long currentUptime = getSystemUptime();

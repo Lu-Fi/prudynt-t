@@ -24,6 +24,7 @@ struct OSDItem
     uint16_t width;
     uint16_t height;
     IMPOSDRgnAttrData *rgnAttrData;
+    bool isStatic = false;
 };
 
 struct Glyph {
