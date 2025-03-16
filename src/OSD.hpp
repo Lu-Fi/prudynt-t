@@ -6,6 +6,7 @@
 #include "Config.hpp"
 #include <imp/imp_osd.h>
 #include <imp/imp_encoder.h>
+#include <imp/imp_isp.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>

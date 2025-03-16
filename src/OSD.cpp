@@ -1,4 +1,3 @@
-
 #include <cmath>
 #include "OSD.hpp"
 #include "Config.hpp"
@@ -828,19 +827,19 @@ void OSD::updateDisplayEverySecond()
             // Format and update user text
             if (osdUser.isStatic == false)
             {
-            if ((flag & 2) && osd.user_text_enabled)
-            {
-                std::string user_text = osd.user_text_format;
-
-                if (strstr(osd.user_text_format, "%hostname") != nullptr)
+                if ((flag & 2) && osd.user_text_enabled)
                 {
-                    replace(user_text, "%hostname", hostname);
-                }
+                    std::string user_text = osd.user_text_format;
 
-                if (strstr(osd.user_text_format, "%ipaddress") != nullptr)
-                {
-                    replace(user_text, "%ipaddress", ip);
-                }
+                    if (strstr(osd.user_text_format, "%hostname") != nullptr)
+                    {
+                        replace(user_text, "%hostname", hostname);
+                    }
+
+                    if (strstr(osd.user_text_format, "%ipaddress") != nullptr)
+                    {
+                        replace(user_text, "%ipaddress", ip);
+                    }
 
                     if (strstr(osd.user_text_format, "%gain") != nullptr)
                     {
@@ -854,28 +853,28 @@ void OSD::updateDisplayEverySecond()
                         }
                     }
 
-                if (strstr(osd.user_text_format, "%fps") != nullptr)
-                {
-                    char fps[4];
-                    snprintf(fps, 4, "%3d", osd.stats.fps);
-                    replace(user_text, "%fps", fps);
+                    if (strstr(osd.user_text_format, "%fps") != nullptr)
+                    {
+                        char fps[4];
+                        snprintf(fps, 4, "%3d", osd.stats.fps);
+                        replace(user_text, "%fps", fps);
+                    }
+
+                    if (strstr(osd.user_text_format, "%bps") != nullptr)
+                    {
+                        char bps[8];
+                        snprintf(bps, 8, "%5d", osd.stats.bps);
+                        replace(user_text, "%bps", bps);
+                    }
+
+                    set_text(&osdUser, nullptr, user_text.c_str(),
+                            osd.pos_user_text_x, osd.pos_user_text_y, osd.user_text_rotation);
+
+                    user_text.clear();
+
+                    flag ^= 2;
+                    return;
                 }
-
-                if (strstr(osd.user_text_format, "%bps") != nullptr)
-                {
-                    char bps[8];
-                    snprintf(bps, 8, "%5d", osd.stats.bps);
-                    replace(user_text, "%bps", bps);
-                }
-
-                set_text(&osdUser, nullptr, user_text.c_str(),
-                         osd.pos_user_text_x, osd.pos_user_text_y, osd.user_text_rotation);
-
-                user_text.clear();
-
-                flag ^= 2;
-                return;
-            }
             } else {
 
                 flag ^= 2;
@@ -884,19 +883,35 @@ void OSD::updateDisplayEverySecond()
              // Format and update uptime / gain
             if ((flag & 4) && osd.uptime_enabled)
             {
-                unsigned long currentUptime = getSystemUptime();
-                unsigned long days = currentUptime / 86400;
-                unsigned long hours = (currentUptime % 86400) / 3600;
-                unsigned long minutes = (currentUptime % 3600) / 60;
-                //unsigned long seconds = currentUptime % 60;
+                if (strstr(osd.uptime_format, "%gain") != nullptr)
+                {
+                    uint32_t sgain = 0;
+                    int ret = IMP_ISP_Tuning_GetTotalGain(&sgain);
+                    if (ret == 0)
+                    {
+                        snprintf(uptimeFormatted, sizeof(uptimeFormatted), "%u", sgain);
+                        set_text(&osdUptm, nullptr, uptimeFormatted,
+                                osd.pos_uptime_x, osd.pos_uptime_y, osd.uptime_rotation);
+                    }
+                    flag ^= 4;
+                    return;                    
+                }
+                else
+                {
+                    unsigned long currentUptime = getSystemUptime();
+                    unsigned long days = currentUptime / 86400;
+                    unsigned long hours = (currentUptime % 86400) / 3600;
+                    unsigned long minutes = (currentUptime % 3600) / 60;
+                    //unsigned long seconds = currentUptime % 60;
 
-                snprintf(uptimeFormatted, sizeof(uptimeFormatted), osd.uptime_format, days, hours, minutes);
+                    snprintf(uptimeFormatted, sizeof(uptimeFormatted), osd.uptime_format, days, hours, minutes);
 
-                set_text(&osdUptm, nullptr, uptimeFormatted,
-                         osd.pos_uptime_x, osd.pos_uptime_y, osd.uptime_rotation);
+                    set_text(&osdUptm, nullptr, uptimeFormatted,
+                            osd.pos_uptime_x, osd.pos_uptime_y, osd.uptime_rotation);
 
-                flag ^= 4;
-                return;
+                    flag ^= 4;
+                    return;
+                }
             }          
         }
     }
