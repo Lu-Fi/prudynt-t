@@ -56,6 +56,8 @@ RTPSink* IMPAudioServerMediaSubsession::createNewRTPSink(
     unsigned char rtpPayloadTypeIfDynamic,
     FramedSource* inputSource)
 {
+    RTPSink* rtpSink;
+
     unsigned rtpPayloadFormat = rtpPayloadTypeIfDynamic;
     unsigned rtpTimestampFrequency = global_audio[audioChn]->imp_audio->sample_rate;
     const char* rtpPayloadFormatName = "L16";
@@ -89,10 +91,20 @@ RTPSink* IMPAudioServerMediaSubsession::createNewRTPSink(
 
     LOG_DEBUG("createNewRTPSink: " << rtpPayloadFormatName << ", " << rtpTimestampFrequency);
 
-    return SimpleRTPSink::createNew(
+    rtpSink = SimpleRTPSink::createNew(
         envir(), rtpGroupsock, rtpPayloadFormat, rtpTimestampFrequency,
         /* sdpMediaTypeString*/ "audio",
         rtpPayloadFormatName,
         /* numChannels */ outChnCnt,
         allowMultipleFramesPerPacket);
+
+    if (rtpSink) {
+
+        rtpSink->setRTPTimestampFrequency(cfg->audio.input_sample_rate);
+        
+        rtpSink->enableRTCPReports();
+        rtpSink->resetPresentationTimes();
+    }
+
+    return rtpSink;
 }

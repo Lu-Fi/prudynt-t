@@ -66,29 +66,38 @@ RTPSink *IMPServerMediaSubsession::createNewRTPSink(
     FramedSource *fs)
 {
     increaseSendBufferTo(envir(), rtpGroupsock->socketNum(), cfg->rtsp.send_buffer_size);
+    
+    RTPSink* rtpSink;
+    
     // Use VPS only if it's available (non-nullptr, and we are in H265 mode)
     if (vps)
     {
-        return H265VideoRTPSink::createNew(
+        rtpSink = H265VideoRTPSink::createNew(
             envir(),
             rtpGroupsock,
             rtpPayloadTypeIfDynamic,
-            &vps->data[0], vps->data.size(), // Now using pointer, check and dereference
+            &vps->data[0], vps->data.size(),
             &sps.data[0], sps.data.size(),
             &pps.data[0], pps.data.size());
     }
     else
     {
         // For H264 or other formats, VPS is not used
-        return H264VideoRTPSink::createNew(
+        rtpSink = H264VideoRTPSink::createNew(
             envir(),
             rtpGroupsock,
             rtpPayloadTypeIfDynamic,
             &sps.data[0], sps.data.size(),
             &pps.data[0], pps.data.size());
     }
+    
+    if (rtpSink) {
 
-    //enabling this allows stream resolution changes
-    //not only the first sdp is used
-    //delete[] fSDPLines; fSDPLines = NULL;
+        rtpSink->setRTPTimestampFrequency(90000); // Standard für H.264/H.265
+        
+        rtpSink->enableRTCPReports();
+        rtpSink->resetPresentationTimes();
+    }
+    
+    return rtpSink;
 }
