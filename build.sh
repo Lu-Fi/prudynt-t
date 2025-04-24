@@ -36,6 +36,15 @@ deps() {
 	mkdir -p 3rdparty/install/include
 	CROSS_COMPILE=${PRUDYNT_CROSS}
 
+	echo "Build libhelix-aac"
+	cd 3rdparty
+	if [[ "$2" == "-static" ]]; then
+		PRUDYNT_CROSS=$PRUDYNT_CROSS ../scripts/make_libhelixaac_deps.sh -static
+	else
+		PRUDYNT_CROSS=$PRUDYNT_CROSS ../scripts/make_libhelixaac_deps.sh
+	fi
+	cd ../
+
 	echo "Build libwebsockets"
 	cd 3rdparty
 	if [[ "$2" == "-static" ]]; then
@@ -140,6 +149,10 @@ deps() {
 			echo "use $1 libs"
 			cp ingenic-lib/$1/lib/1.1.6/uclibc/5.4.0/* $TOP/3rdparty/install/lib
 			;;
+		C100)
+			echo "use $1 libs"
+			cp ingenic-lib/$1/lib/2.1.0/uclibc/5.4.0/* $TOP/3rdparty/install/lib
+			;;
 		T40)
 			echo "use $1 libs"
 			cp ingenic-lib/$1/lib/1.2.0/uclibc/* $TOP/3rdparty/install/lib
@@ -206,7 +219,7 @@ if [ $# -eq 0 ]; then
 	echo "       ./build.sh prudynt <platform> [options]"
 	echo "       ./build.sh full <platform> [options]"
 	echo ""
-	echo "Platforms: T20, T21, T23, T30, T31, T40, T41"
+	echo "Platforms: T20, T21, T23, T30, T31, C100, T40, T41"
 	echo "Options:   -static (optional, for static builds)"
 	exit 1
 elif [[ "$1" == "deps" ]]; then
